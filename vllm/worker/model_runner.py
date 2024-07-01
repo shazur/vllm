@@ -1,4 +1,5 @@
 import gc
+import sys
 import time
 import warnings
 from collections import defaultdict
@@ -23,7 +24,7 @@ from vllm.model_executor.model_loader import get_model
 from vllm.model_executor.model_loader.tensorizer import TensorizerConfig
 from vllm.multimodal import MULTIMODAL_REGISTRY
 from vllm.sampling_params import SamplingParams
-from vllm.sequence import SamplerOutput, SequenceData, SequenceGroupMetadata
+from vllm.sequence import MeowSamplerOutput, SamplerOutput, SequenceData, SequenceGroupMetadata
 from vllm.utils import (CudaMemoryProfiler, get_kv_cache_torch_dtype, is_hip,
                         is_pin_memory_available, make_tensor_with_pad)
 
@@ -723,17 +724,19 @@ class ModelRunner:
         return (input_tokens, input_positions, attn_metadata,
                 sampling_metadata, lora_requests, lora_mapping,
                 multi_modal_kwargs)
-
-    @torch.inference_mode()
-    def execute_model(
+    
+    def _prefill(
         self,
         seq_group_metadata_list: Optional[List[SequenceGroupMetadata]],
         kv_caches: List[torch.Tensor],
-    ) -> Optional[SamplerOutput]:
-        (input_tokens, input_positions, attn_metadata, sampling_metadata,
-         lora_requests, lora_mapping, multi_modal_kwargs
-         ) = self.prepare_input_tensors(seq_group_metadata_list)
-
+        lora_requests,
+        lora_mapping,
+        attn_metadata,
+        input_tokens,
+        input_positions,
+        multi_modal_kwargs,
+        index_id: Optional[str],
+    ):
         if self.lora_config:
             self.set_active_loras(lora_requests, lora_mapping)
 
@@ -754,6 +757,36 @@ class ModelRunner:
             **multi_modal_kwargs,
         )
 
+        if index_id is not None:         
+            #write kv_caches to disk - TODO: should be async
+            kv_caches_dict = {index_id: kv_caches}
+            torch.save(kv_caches_dict, "persistent_kv_cache.pt")  
+        
+        return hidden_states
+    
+    def _get_tensor_dict_size(tensor_dict):
+        total_size = sys.getsizeof(tensor_dict)
+        for tensor in tensor_dict.values():
+            if isinstance(tensor, torch.Tensor):
+                total_size += tensor.element_size() * tensor.nelement()
+            #elif isinstance(tensor, np.ndarray):
+            #total_size += tensor.nbytes
+            # Add conditions for other tensor types as needed
+        return total_size
+
+    @torch.inference_mode()
+    def execute_model(
+        self,
+        seq_group_metadata_list: Optional[List[SequenceGroupMetadata]],
+        kv_caches: List[torch.Tensor],
+        index_id: Optional[str] = None
+    ) -> Optional[SamplerOutput]:
+        (input_tokens, input_positions, attn_metadata, sampling_metadata,
+         lora_requests, lora_mapping, multi_modal_kwargs
+         ) = self.prepare_input_tensors(seq_group_metadata_list)
+              
+        hidden_states = self._prefill(seq_group_metadata_list, kv_caches, lora_requests, lora_mapping, attn_metadata, input_tokens, input_positions, multi_modal_kwargs, index_id)
+
         # Compute the logits.
         logits = self.model.compute_logits(hidden_states, sampling_metadata)
 
@@ -763,11 +796,22 @@ class ModelRunner:
 
         # Sample the next token.
         output = self.model.sample(
-            logits=logits,
-            sampling_metadata=sampling_metadata,
+            logits = logits,
+            sampling_metadata = sampling_metadata,
         )
 
-        return output
+        meow_sampler_output = MeowSamplerOutput(
+            existing_sampler_output=output,
+            kv_caches=kv_caches, 
+            seq_group_metadata_list=seq_group_metadata_list,
+            sampling_metadata=sampling_metadata, 
+            attn_metadata=attn_metadata,
+            input_tokens=input_tokens,
+            input_positions=input_positions,
+            index_id=index_id
+        )
+
+        return meow_sampler_output
 
     @torch.inference_mode()
     def profile_run(self) -> None:

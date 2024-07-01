@@ -131,6 +131,7 @@ class ChatCompletionRequest(OpenAIBaseModel):
     # https://platform.openai.com/docs/api-reference/chat/create
     messages: List[ChatCompletionMessageParam]
     model: str
+    index_id: Optional[str] = None
     frequency_penalty: Optional[float] = 0.0
     logit_bias: Optional[Dict[str, float]] = None
     logprobs: Optional[bool] = False

@@ -235,7 +235,7 @@ class Worker(WorkerBase):
         execute_model_req: Optional[ExecuteModelRequest] = None
     ) -> List[Union[SamplerOutput, PoolerOutput]]:
         if not self.is_driver_worker:
-            self._execute_model_non_driver()
+            self._execute_model_non_driver(execute_model_req.index_id)
             return []
 
         if execute_model_req is None:
@@ -278,7 +278,7 @@ class Worker(WorkerBase):
             return []
 
         output = self.model_runner.execute_model(seq_group_metadata_list,
-                                                 self.gpu_cache)
+                                                 self.gpu_cache, execute_model_req.index_id)
 
         # Worker only supports single-step execution. Wrap the output in a list
         # to conform to interface.
@@ -294,7 +294,7 @@ class Worker(WorkerBase):
         while self._execute_model_non_driver():
             pass
 
-    def _execute_model_non_driver(self) -> bool:
+    def _execute_model_non_driver(self, index_id = Optional[str]) -> bool:
         """Execute model in parallel worker.
 
         Returns True iff there are remaining sequences to process.
@@ -314,7 +314,7 @@ class Worker(WorkerBase):
         if num_seq_groups == 0:
             return False
 
-        self.model_runner.execute_model(None, self.gpu_cache)
+        self.model_runner.execute_model(None, self.gpu_cache, index_id)
         return True
 
     def add_lora(self, lora_request: LoRARequest) -> bool:

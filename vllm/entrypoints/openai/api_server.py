@@ -12,9 +12,12 @@ from fastapi import Request
 from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse, Response, StreamingResponse
+from fastapi.encoders import jsonable_encoder
 from prometheus_client import make_asgi_app
 from starlette.routing import Mount
 
+
+import vllm
 import vllm.envs as envs
 from vllm.engine.arg_utils import AsyncEngineArgs
 from vllm.engine.async_llm_engine import AsyncLLMEngine
@@ -25,16 +28,17 @@ from vllm.entrypoints.openai.protocol import (ChatCompletionRequest,
                                               EmbeddingRequest, ErrorResponse)
 from vllm.entrypoints.openai.serving_chat import OpenAIServingChat
 from vllm.entrypoints.openai.serving_completion import OpenAIServingCompletion
+from vllm.entrypoints.openai.persistent_kv_cache import (PersistentKvCache, IndexContextRequest)
 from vllm.entrypoints.openai.serving_embedding import OpenAIServingEmbedding
 from vllm.logger import init_logger
 from vllm.usage.usage_lib import UsageContext
-from vllm.version import __version__ as VLLM_VERSION
 
 TIMEOUT_KEEP_ALIVE = 5  # seconds
 
 openai_serving_chat: OpenAIServingChat
 openai_serving_completion: OpenAIServingCompletion
 openai_serving_embedding: OpenAIServingEmbedding
+persistent_kv_cache: PersistentKvCache
 
 logger = init_logger('vllm.entrypoints.openai.api_server')
 
@@ -93,7 +97,7 @@ async def show_available_models():
 
 @app.get("/version")
 async def show_version():
-    ver = {"version": VLLM_VERSION}
+    ver = {"version": vllm.__version__}
     return JSONResponse(content=ver)
 
 
@@ -111,7 +115,11 @@ async def create_chat_completion(request: ChatCompletionRequest,
     else:
         assert isinstance(generator, ChatCompletionResponse)
         return JSONResponse(content=generator.model_dump())
-
+    
+@app.post("/index")
+async def index_context(request: IndexContextRequest, raw_request: Request):
+    index_id = await persistent_kv_cache.populate(request)
+    return JSONResponse(content=jsonable_encoder({"indexId": index_id}))
 
 @app.post("/v1/completions")
 async def create_completion(request: CompletionRequest, raw_request: Request):
@@ -174,7 +182,7 @@ if __name__ == "__main__":
             raise ValueError(f"Invalid middleware {middleware}. "
                              f"Must be a function or a class.")
 
-    logger.info("vLLM API server version %s", VLLM_VERSION)
+    logger.info("vLLM API server version %s", vllm.__version__)
     logger.info("args: %s", args)
 
     if args.served_model_name is not None:
@@ -217,6 +225,9 @@ if __name__ == "__main__":
                                             args.chat_template)
     openai_serving_completion = OpenAIServingCompletion(
         engine, model_config, served_model_names, args.lora_modules)
+    persistent_kv_cache = PersistentKvCache(
+        engine, model_config, served_model_names, args.lora_modules
+    )
     openai_serving_embedding = OpenAIServingEmbedding(engine, model_config,
                                                       served_model_names)
     app.root_path = args.root_path

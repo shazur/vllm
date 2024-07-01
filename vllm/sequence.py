@@ -16,6 +16,8 @@ from vllm.sampling_params import SamplingParams
 if TYPE_CHECKING:
     from vllm.multimodal import MultiModalData
     from vllm.spec_decode.metrics import SpecDecodeWorkerMetrics
+    from vllm.model_executor import SamplingMetadata
+    from vllm.attention import AttentionMetadata
 
 
 @dataclass
@@ -118,6 +120,7 @@ class SequenceData:
         self,
         prompt_token_ids: List[int],
         output_token_ids: Optional[List[int]] = None,
+        index_id: Optional[str] = None
     ) -> None:
         if output_token_ids is None:
             output_token_ids = []
@@ -125,6 +128,7 @@ class SequenceData:
         self.prompt_token_ids = prompt_token_ids
         self._prompt_token_ids_tuple: Tuple[int, ...] = tuple(prompt_token_ids)
         self.output_token_ids = output_token_ids
+        self.index_id = index_id
         self.cumulative_logprob = 0.0
         # The number of tokens that are computed (that run against the model).
         self._num_computed_tokens = 0
@@ -145,6 +149,9 @@ class SequenceData:
 
     def get_token_ids(self) -> List[int]:
         return self.prompt_token_ids + self.output_token_ids
+    
+    def get_index_id(self) -> str:
+        return self.index_id
 
     def get_prefix_token_ids(
             self, num_tokens: int
@@ -225,6 +232,7 @@ class Sequence:
         block_size: int,
         eos_token_id: Optional[int] = None,
         lora_request: Optional[LoRARequest] = None,
+        index_id: Optional[str] = None
     ) -> None:
         self.seq_id = seq_id
         self.inputs = inputs
@@ -232,7 +240,7 @@ class Sequence:
         self.eos_token_id = eos_token_id
         self.lora_request = lora_request
 
-        self.data = SequenceData(self.prompt_token_ids)
+        self.data = SequenceData(self.prompt_token_ids, index_id=index_id)
         self.output_logprobs: SampleLogprobs = []
         self.output_text = ""
 
@@ -263,6 +271,10 @@ class Sequence:
     @property
     def lora_int_id(self) -> int:
         return self.lora_request.lora_int_id if self.lora_request else 0
+    
+    @property
+    def index_id(self) -> str:
+        return self.index_id
 
     def get_output_text_to_return(self, buffer_length: int):
         # We return the full output text if the sequence is finished.
@@ -817,6 +829,60 @@ class SamplerOutput:
             f"sampled_token_ids={sampled_token_ids_repr}, "
             f"spec_decode_worker_metrics={self.spec_decode_worker_metrics})")
 
+class MeowSamplerOutput(SamplerOutput):
+    kv_caches: Optional[List[torch.Tensor]] = None
+    seq_group_metadata_list: Optional[List["SequenceGroupMetadata"]] = None
+    sampling_metadata: Optional["SamplingMetadata"] = None
+    attn_metadata: Optional["AttentionMetadata"] = None
+    input_tokens: Optional[torch.Tensor] = None
+    input_positions: Optional[torch.Tensor] = None
+    index_id: Optional[str] = None
+
+    def __init__(self, existing_sampler_output: SamplerOutput, 
+                 kv_caches: Optional[List[torch.Tensor]] = None,
+                 seq_group_metadata_list: Optional[List["SequenceGroupMetadata"]] = None,
+                 sampling_metadata: Optional["SamplingMetadata"] = None,
+                 attn_metadata: Optional["AttentionMetadata"] = None,
+                 input_tokens: Optional[torch.Tensor] = None,
+                 input_positions: Optional[torch.Tensor] = None,
+                 index_id: Optional[str] = None):
+        super().__init__(
+            outputs=existing_sampler_output.outputs,
+            sampled_token_probs=existing_sampler_output.sampled_token_probs,
+            logprobs=existing_sampler_output.logprobs,
+            sampled_token_ids=existing_sampler_output.sampled_token_ids,
+            spec_decode_worker_metrics=existing_sampler_output.spec_decode_worker_metrics
+        )
+        self.kv_caches = kv_caches
+        self.seq_group_metadata_list = seq_group_metadata_list
+        self.sampling_metadata = sampling_metadata
+        self.attn_metadata = attn_metadata
+        self.input_tokens = input_tokens
+        self.input_positions = input_positions
+        self.index_id = index_id
+
+    def __repr__(self) -> str:
+        sampled_token_probs_repr = ("None" if self.sampled_token_probs is None
+                                    else self.sampled_token_probs.shape)
+        sampled_token_ids_repr = ("None" if self.sampled_token_ids is None else
+                                  self.sampled_token_ids.shape)
+        kv_caches_repr = ("None" if self.kv_caches is None else
+                          [cache.shape for cache in self.kv_caches])
+        input_tokens_repr = ("None" if self.input_tokens is None else
+                             self.input_tokens.shape)
+        input_positions_repr = ("None" if self.input_positions is None else
+                                self.input_positions.shape)
+        return (f"MeowSamplerOutput(outputs={self.outputs}, "
+                f"sampled_token_probs={sampled_token_probs_repr}, "
+                f"sampled_token_ids={sampled_token_ids_repr}, "
+                f"spec_decode_worker_metrics={self.spec_decode_worker_metrics}, "
+                f"kv_caches={kv_caches_repr}, "
+                f"seq_group_metadata_list={self.seq_group_metadata_list}, "
+                f"sampling_metadata={self.sampling_metadata}, "
+                f"attn_metadata={self.attn_metadata}, "
+                f"input_tokens={input_tokens_repr}, "
+                f"input_positions={input_positions_repr}, "
+                f"index_id={self.index_id})")
 
 @dataclass
 class PoolerOutput:
@@ -854,6 +920,8 @@ class ExecuteModelRequest:
     num_lookahead_slots: int = 0
     # The number of requests in the running queue.
     running_queue_size: int = 0
+    # save cache to disk with index_id as key
+    index_id: Optional[str] = None
 
     def clone(
         self, seq_group_metadata_list: List[SequenceGroupMetadata]

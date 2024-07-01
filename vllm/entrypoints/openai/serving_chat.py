@@ -272,6 +272,7 @@ class OpenAIServingChat(OpenAIServing):
             sampling_params,
             request_id,
             lora_request,
+            index_id = request.index_id,
         )
         # Streaming response
         if request.stream:

@@ -6,6 +6,7 @@ from typing import Type, TypeVar, Union
 
 from transformers import GenerationConfig, PreTrainedTokenizer
 
+import vllm
 from vllm.config import (CacheConfig, DecodingConfig, DeviceConfig, LoadConfig,
                          LoRAConfig, ModelConfig, ParallelConfig,
                          SchedulerConfig, SpeculativeConfig,
@@ -28,7 +29,7 @@ from vllm.outputs import (EmbeddingRequestOutput, RequestOutput,
 from vllm.pooling_params import PoolingParams
 from vllm.sampling_params import SamplingParams
 from vllm.sequence import (EmbeddingSequenceGroupOutput, ExecuteModelRequest,
-                           PoolerOutput, SamplerOutput, Sequence,
+                           PoolerOutput, MeowSamplerOutput, SamplerOutput, Sequence,
                            SequenceGroup, SequenceGroupMetadata,
                            SequenceStatus)
 from vllm.transformers_utils.detokenizer import Detokenizer
@@ -37,7 +38,6 @@ from vllm.transformers_utils.tokenizer_group import (BaseTokenizerGroup,
 from vllm.usage.usage_lib import (UsageContext, is_usage_stats_enabled,
                                   usage_message)
 from vllm.utils import Counter
-from vllm.version import __version__ as VLLM_VERSION
 
 logger = init_logger(__name__)
 _LOCAL_LOGGING_INTERVAL_SEC = 5
@@ -169,7 +169,7 @@ class LLMEngine:
             "enforce_eager=%s, kv_cache_dtype=%s, "
             "quantization_param_path=%s, device_config=%s, "
             "decoding_config=%r, seed=%d, served_model_name=%s)",
-            VLLM_VERSION,
+            vllm.__version__,
             model_config.model,
             speculative_config,
             model_config.tokenizer,
@@ -436,6 +436,7 @@ class LLMEngine:
         params: Union[SamplingParams, PoolingParams],
         arrival_time: float,
         lora_request: Optional[LoRARequest],
+        index_id: Optional[str]
     ) -> None:
         # Create the sequences.
         block_size = self.cache_config.block_size
@@ -443,7 +444,7 @@ class LLMEngine:
         eos_token_id = self._get_eos_token_id(lora_request)
 
         seq = Sequence(seq_id, processed_inputs, block_size, eos_token_id,
-                       lora_request)
+                       lora_request, index_id)
 
         # Create a SequenceGroup based on SamplingParams or PoolingParams
         if isinstance(params, SamplingParams):
@@ -663,7 +664,7 @@ class LLMEngine:
 
     def _process_model_outputs(
         self,
-        output: GenericSequence[Union[SamplerOutput, PoolerOutput]],
+        output: GenericSequence[Union[SamplerOutput, PoolerOutput, MeowSamplerOutput]],
         scheduled_seq_groups: List[ScheduledSequenceGroup],
         ignored_seq_groups: List[SequenceGroup],
         seq_group_metadata_list: List[SequenceGroupMetadata],
@@ -694,6 +695,8 @@ class LLMEngine:
             self.output_processor.process_prompt_logprob(seq_group, outputs)
             if seq_group_meta.do_sample:
                 self.output_processor.process_outputs(seq_group, outputs)
+            if (seq_group is not None and seq_group.is_finished()):
+              print("meow request finished")
 
         # Free the finished sequence groups.
         self.scheduler.free_finished_seq_groups()
