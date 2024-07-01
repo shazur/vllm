@@ -696,7 +696,7 @@ class LLMEngine:
             if seq_group_meta.do_sample:
                 self.output_processor.process_outputs(seq_group, outputs)
             if (seq_group is not None and seq_group.is_finished()):
-              print("meow request finished")
+              print("meow request finished!!!")
 
         # Free the finished sequence groups.
         self.scheduler.free_finished_seq_groups()
