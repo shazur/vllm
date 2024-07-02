@@ -116,6 +116,7 @@ async def create_chat_completion(request: ChatCompletionRequest,
         assert isinstance(generator, ChatCompletionResponse)
         return JSONResponse(content=generator.model_dump())
     
+#this is our endpoint    
 @app.post("/index")
 async def index_context(request: IndexContextRequest, raw_request: Request):
     index_id = await persistent_kv_cache.populate(request)
