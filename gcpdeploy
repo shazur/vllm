@@ -15,7 +15,7 @@ handle_error() {
     exit 1
 }
 
-# update local changes in remote repository
+# Update local changes in remote repository
 git commit -am "$1" || handle_error "git commit"
 git pull --rebase origin meow-cache || handle_error "git pull"
 git push origin meow-cache || handle_error "git push"
