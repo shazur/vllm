@@ -1,5 +1,7 @@
 #!/bin/bash
 
+set -e  # Exit immediately if a command exits with a non-zero status
+
 # Check if a commit message was provided
 if [ $# -eq 0 ]; then
     echo "Error: Please provide a commit message."
@@ -7,19 +9,25 @@ if [ $# -eq 0 ]; then
     exit 1
 fi
 
+# Function to handle errors
+handle_error() {
+    echo "Error: Deployment failed at step: $1"
+    exit 1
+}
+
 # Local operations
-git commit -am "$1"
-git pull --rebase origin meow-cache
-git push origin meow-cache
+git commit -am "$1" || handle_error "git commit"
+git pull --rebase origin meow-cache || handle_error "git pull"
+git push origin meow-cache || handle_error "git push"
 
 # Connect to GCP and run remote commands
-gcpconnect << EOF
-conda activate /opt/conda-envs/meowenv
-cd /opt/conda-envs/meowenv/vllm
-git reset --hard
-git pull --rebase origin meow-cache
+ssh -i ~/.ssh/id_gcp_rsa shahar@34.132.19.76 << EOF || handle_error "SSH connection or remote commands"
+conda activate /opt/conda-envs/meowenv || exit 1
+cd /opt/conda-envs/meowenv/vllm || exit 1
+git reset --hard || exit 1
+git pull --rebase origin meow-cache || exit 1
 echo "To debug the machine with the new changes please restart the debugger"
-exit
+exit 0
 EOF
 
-echo "Deployment completed."
+echo "Deployment completed successfully."
