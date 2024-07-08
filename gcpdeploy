@@ -21,7 +21,7 @@ git pull --rebase origin meow-cache || handle_error "git pull"
 git push origin meow-cache || handle_error "git push"
 
 # Connect to GCP and run remote commands
-ssh -i ../.ssh/id_ed25519 shahar@34.132.19.76 << EOF || handle_error "SSH connection or remote commands"
+ssh -i ~/.ssh/id_ed25519 shahar@34.132.19.76 << EOF || handle_error "SSH connection or remote commands"
 conda activate /opt/conda-envs/meowenv || exit 1
 cd /opt/conda-envs/meowenv/vllm || exit 1
 git reset --hard || exit 1
