@@ -1,0 +1,25 @@
+#!/bin/bash
+
+# Check if a commit message was provided
+if [ $# -eq 0 ]; then
+    echo "Error: Please provide a commit message."
+    echo "Usage: ./gcpdeploy \"Your commit message\""
+    exit 1
+fi
+
+# Local operations
+git commit -am "$1"
+git pull --rebase origin meow-cache
+git push origin meow-cache
+
+# Connect to GCP and run remote commands
+gcpconnect << EOF
+conda activate /opt/conda-envs/meowenv
+cd /opt/conda-envs/meowenv/vllm
+git reset --hard
+git pull --rebase origin meow-cache
+echo "To debug the machine with the new changes please restart the debugger"
+exit
+EOF
+
+echo "Deployment completed."
