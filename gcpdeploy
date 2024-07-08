@@ -1,6 +1,7 @@
 #!/bin/bash
 
-set -e  # Exit immediately if a command exits with a non-zero status
+# Exit immediately if a command exits with a non-zero status
+set -e
 
 # Check if a commit message was provided
 if [ $# -eq 0 ]; then
