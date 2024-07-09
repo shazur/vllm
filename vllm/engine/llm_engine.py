@@ -726,7 +726,7 @@ class LLMEngine:
               if index_id is not None:         
                 #get relevant blocks to save
                 blocks = list(seq_group_metadata.block_tables.values())[0]  
-                kv_caches_dict = {index_id: {"data": self._select_blocks(o.kv_caches[0], blocks)}}
+                kv_caches_dict = {index_id: {"data": self._select_blocks(o.kv_caches, blocks)}}
                 #write kv_caches to disk - TODO: should be async
                 torch.save(kv_caches_dict, "persistent_kv_cache.pt")  #todo: filename should be index_id
                 print("meow request finished!!!")
