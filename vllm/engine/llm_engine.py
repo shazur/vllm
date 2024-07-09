@@ -3,6 +3,7 @@ from contextlib import contextmanager
 from typing import TYPE_CHECKING, ClassVar, Iterable, List, Optional
 from typing import Sequence as GenericSequence
 from typing import Type, TypeVar, Union
+import torch
 
 from transformers import GenerationConfig, PreTrainedTokenizer
 
@@ -661,6 +662,17 @@ class LLMEngine:
             seq.status = SequenceStatus.FINISHED_STOPPED
 
         return
+    
+    def _select_blocks(main_tensor, index_tensor):
+        # Ensure index_tensor is 1D
+        index_tensor = index_tensor.squeeze()
+        # Get the value of x from the index tensor
+        x = index_tensor.size(0)
+        # Select the indices from the second dimension of main_tensor
+        result = main_tensor[:, index_tensor, :, :, :]
+        # Ensure the output shape is correct
+        assert result.shape == (2, x, 16, 8, 128), f"Unexpected shape: {result.shape}"
+        return result
 
     def _process_model_outputs(
         self,
@@ -696,7 +708,16 @@ class LLMEngine:
             if seq_group_meta.do_sample:
                 self.output_processor.process_outputs(seq_group, outputs)
             if (seq_group is not None and seq_group.is_finished()):
-              print("meow request finished!!!")
+              o = output[0]
+              seq_group_metadata = o.seq_group_metadata_list[0]
+              index_id = list(seq_group_metadata.seq_data.values())[0].get_index_id()
+              if index_id is not None:         
+                #get relevant blocks to save
+                blocks = list(seq_group_metadata.block_tables.values())[0]  
+                kv_caches_dict = {index_id: {"data": self._select_blocks(o.kv_caches, blocks)}}
+                #write kv_caches to disk - TODO: should be async
+                torch.save(kv_caches_dict, "persistent_kv_cache.pt")  #todo: filename should be index_id
+                print("meow request finished!!!")
 
         # Free the finished sequence groups.
         self.scheduler.free_finished_seq_groups()

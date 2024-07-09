@@ -757,10 +757,10 @@ class ModelRunner:
             **multi_modal_kwargs,
         )
 
-        if index_id is not None:         
+        #if index_id is not None:         
             #write kv_caches to disk - TODO: should be async
-            kv_caches_dict = {index_id: kv_caches}
-            torch.save(kv_caches_dict, "persistent_kv_cache.pt")  
+            #kv_caches_dict = {index_id: kv_caches}
+            #torch.save(kv_caches_dict, "persistent_kv_cache.pt")  
         
         return hidden_states
     
