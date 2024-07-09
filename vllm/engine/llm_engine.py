@@ -663,7 +663,7 @@ class LLMEngine:
 
         return
     
-    def _select_blocks(tensor_list, indices):
+    def _select_blocks(self, tensor_list, indices):
         # Convert indices to a tensor if it's not already
         if not isinstance(indices, torch.Tensor):
             indices = torch.tensor(indices)
