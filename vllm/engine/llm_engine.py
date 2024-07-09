@@ -663,17 +663,29 @@ class LLMEngine:
 
         return
     
-    def _select_blocks(main_tensor, indices):
-        # Ensure index_tensor is 1D
-        index_tensor = torch.tensor(indices)
-        # Get the value of x from the index tensor
-        x = index_tensor.size(0)
-        # Select the indices from the second dimension of main_tensor
-        result = main_tensor[:, index_tensor, :, :, :]
-        # Ensure the output shape is correct
-        assert result.shape == (2, x, 16, 8, 128), f"Unexpected shape: {result.shape}"
-        return result
-
+    def _select_blocks(tensor_list, indices):
+        # Convert indices to a tensor if it's not already
+        if not isinstance(indices, torch.Tensor):
+            indices = torch.tensor(indices)
+        
+        # Ensure indices is 1D
+        indices = indices.squeeze()
+        
+        # Get the value of x from the indices
+        x = indices.size(0)
+        
+        results = []
+        for tensor in tensor_list:
+            # Select the indices from the second dimension of the tensor
+            result = tensor[:, indices, :, :, :]
+            
+            # Ensure the output shape is correct
+            assert result.shape == (2, x, 16, 8, 128), f"Unexpected shape: {result.shape}"
+            
+            results.append(result)
+    
+        return results
+    
     def _process_model_outputs(
         self,
         output: GenericSequence[Union[SamplerOutput, PoolerOutput, MeowSamplerOutput]],
@@ -714,7 +726,7 @@ class LLMEngine:
               if index_id is not None:         
                 #get relevant blocks to save
                 blocks = list(seq_group_metadata.block_tables.values())[0]  
-                kv_caches_dict = {index_id: {"data": self._select_blocks(o.kv_caches, blocks)}}
+                kv_caches_dict = {index_id: {"data": self._select_blocks(o.kv_caches[0], blocks)}}
                 #write kv_caches to disk - TODO: should be async
                 torch.save(kv_caches_dict, "persistent_kv_cache.pt")  #todo: filename should be index_id
                 print("meow request finished!!!")
