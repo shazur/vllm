@@ -663,9 +663,9 @@ class LLMEngine:
 
         return
     
-    def _select_blocks(main_tensor, index_tensor):
+    def _select_blocks(main_tensor, indices):
         # Ensure index_tensor is 1D
-        index_tensor = index_tensor.squeeze()
+        index_tensor = torch.tensor(indices)
         # Get the value of x from the index tensor
         x = index_tensor.size(0)
         # Select the indices from the second dimension of main_tensor
