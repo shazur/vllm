@@ -294,7 +294,11 @@ class _AsyncLLMEngine(LLMEngine):
                              "not enabled!")
         if arrival_time is None:
             arrival_time = time.time()
-
+        
+        # meow load cache 
+        #if (index_id and not should_index):
+            # load cache from disk, including num of tokens
+            #  
         processed_inputs = await self.process_model_inputs_async(
             request_id=request_id, inputs=inputs, lora_request=lora_request)
 
