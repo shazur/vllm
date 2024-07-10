@@ -664,29 +664,6 @@ class LLMEngine:
 
         return
     
-    def _select_blocks(self, tensor_list, indices):
-        # Convert indices to a tensor if it's not already
-        if not isinstance(indices, torch.Tensor):
-            indices = torch.tensor(indices)
-        
-        # Ensure indices is 1D
-        indices = indices.squeeze()
-        
-        # Get the value of x from the indices
-        x = indices.size(0)
-        
-        results = []
-        for tensor in tensor_list:
-            # Select the indices from the second dimension of the tensor
-            result = tensor[:, indices, :, :, :]
-            
-            # Ensure the output shape is correct
-            assert result.shape == (2, x, 16, 8, 128), f"Unexpected shape: {result.shape}"
-            
-            results.append(result)
-    
-        return results
-    
     def _process_model_outputs(
         self,
         output: GenericSequence[Union[SamplerOutput, PoolerOutput, MeowSamplerOutput]],
@@ -1024,3 +1001,26 @@ class PersistentKVCacheDict:
         self.dict = {index_id: {"data": self._select_blocks(kv_caches, blocks)}}
     def getKvCaches(self):
         return self.dict
+    
+    def _select_blocks(self, tensor_list, indices):
+        # Convert indices to a tensor if it's not already
+        if not isinstance(indices, torch.Tensor):
+            indices = torch.tensor(indices)
+        
+        # Ensure indices is 1D
+        indices = indices.squeeze()
+        
+        # Get the value of x from the indices
+        x = indices.size(0)
+        
+        results = []
+        for tensor in tensor_list:
+            # Select the indices from the second dimension of the tensor
+            result = tensor[:, indices, :, :, :]
+            
+            # Ensure the output shape is correct
+            assert result.shape == (2, x, 16, 8, 128), f"Unexpected shape: {result.shape}"
+            
+            results.append(result)
+    
+        return results
