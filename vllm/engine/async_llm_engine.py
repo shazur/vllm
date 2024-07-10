@@ -286,7 +286,8 @@ class _AsyncLLMEngine(LLMEngine):
         params: Union[SamplingParams, PoolingParams],
         arrival_time: Optional[float] = None,
         lora_request: Optional[LoRARequest] = None,
-        index_id: Optional[str] = None
+        index_id: Optional[str] = None,
+        should_index: bool = False,
     ) -> None:
         if lora_request is not None and not self.lora_config:
             raise ValueError(f"Got lora_request {lora_request} but LoRA is "
@@ -303,7 +304,8 @@ class _AsyncLLMEngine(LLMEngine):
             params=params,
             arrival_time=arrival_time,
             lora_request=lora_request,
-            index_id=index_id
+            index_id=index_id,
+            should_index=should_index
         )
 
     async def check_health_async(self) -> None:
@@ -549,6 +551,7 @@ class AsyncLLMEngine:
         arrival_time: Optional[float] = None,
         lora_request: Optional[LoRARequest] = None,
         index_id: Optional[str] = None,
+        should_index: bool = False
     ) -> AsyncStream:
         if self.log_requests:
             if isinstance(inputs, str):
@@ -602,7 +605,8 @@ class AsyncLLMEngine:
             params=params,
             arrival_time=arrival_time,
             lora_request=lora_request,
-            index_id=index_id
+            index_id=index_id,
+            should_index=should_index
         )
 
         return stream
@@ -613,7 +617,8 @@ class AsyncLLMEngine:
         sampling_params: SamplingParams,
         request_id: str,
         lora_request: Optional[LoRARequest] = None,
-        index_id: Optional[str] = None
+        index_id: Optional[str] = None,
+        should_index: bool = False
     ) -> AsyncIterator[RequestOutput]:
         """Generate outputs for a request.
 
@@ -682,6 +687,7 @@ class AsyncLLMEngine:
                 sampling_params,
                 lora_request=lora_request,
                 index_id=index_id,
+                should_index=should_index
         ):
             yield LLMEngine.validate_output(output, RequestOutput)
 
@@ -767,6 +773,7 @@ class AsyncLLMEngine:
         *,
         lora_request: Optional[LoRARequest] = None,
         index_id: Optional[str] = None,
+        should_index: bool = False
     ) -> AsyncIterator[Union[RequestOutput, EmbeddingRequestOutput]]:
         """Common logic to process requests with SamplingParams or
         PoolingParams."""
@@ -779,6 +786,7 @@ class AsyncLLMEngine:
             arrival_time=arrival_time,
             lora_request=lora_request,
             index_id=index_id,
+            should_index=should_index
         )
 
         try:

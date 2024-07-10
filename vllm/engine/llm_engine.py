@@ -437,7 +437,8 @@ class LLMEngine:
         params: Union[SamplingParams, PoolingParams],
         arrival_time: float,
         lora_request: Optional[LoRARequest],
-        index_id: Optional[str]
+        index_id: Optional[str],
+        should_index: bool = False
     ) -> None:
         # Create the sequences.
         block_size = self.cache_config.block_size
@@ -445,7 +446,7 @@ class LLMEngine:
         eos_token_id = self._get_eos_token_id(lora_request)
 
         seq = Sequence(seq_id, processed_inputs, block_size, eos_token_id,
-                       lora_request, index_id)
+                       lora_request, index_id, should_index)
 
         # Create a SequenceGroup based on SamplingParams or PoolingParams
         if isinstance(params, SamplingParams):
@@ -722,8 +723,11 @@ class LLMEngine:
             if (seq_group is not None and seq_group.is_finished()):
               o = output[0]
               seq_group_metadata = o.seq_group_metadata_list[0]
-              index_id = list(seq_group_metadata.seq_data.values())[0].get_index_id()
-              if index_id is not None:         
+              seq_data = list(seq_group_metadata.seq_data.values())[0]
+              index_id = seq_data.get_index_id()
+              should_persist = seq_data.should_index()
+
+              if should_persist and index_id is not None:         
                 #get relevant blocks to save
                 blocks = list(seq_group_metadata.block_tables.values())[0]  
                 persistent_kv_caches = PersistentKVCacheDict(index_id, o.kv_caches, blocks)
