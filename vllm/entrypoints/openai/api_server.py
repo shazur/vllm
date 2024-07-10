@@ -120,7 +120,7 @@ async def create_chat_completion(request: ChatCompletionRequest,
 async def create_chat_opt_completion(request: OptimizedCompletionRequest,
                                  raw_request: Request):
     generator = await persistent_kv_cache.create_chat_opt_completion(
-        request, raw_request)
+        request)
     if isinstance(generator, ErrorResponse):
         return JSONResponse(content=generator.model_dump(),
                             status_code=generator.code)
