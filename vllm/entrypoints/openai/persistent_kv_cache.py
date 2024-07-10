@@ -4,7 +4,7 @@ import uuid
 from pydantic import BaseModel
 from vllm.config import ModelConfig
 from vllm.engine.async_llm_engine import AsyncLLMEngine
-from vllm.entrypoints.openai.protocol import ChatCompletionRequest
+from vllm.entrypoints.openai.protocol import ChatCompletionRequest, CompletionRequest
 from vllm.entrypoints.openai.serving_chat import OpenAIServingChat
 from vllm.entrypoints.openai.serving_engine import LoRAModulePath
 from openai.types.chat.chat_completion_user_message_param import ChatCompletionUserMessageParam
@@ -13,6 +13,9 @@ from openai.types.chat.chat_completion_user_message_param import ChatCompletionU
 class IndexContextRequest(BaseModel):
     content: str
     model: str = "mistralai/Mistral-7B-Instruct-v0.3"
+
+class OptimizedCompletionRequest(ChatCompletionRequest):
+    index_id: str
 
 class PersistentKvCache():
     def __init__(self, engine: AsyncLLMEngine, model_config: ModelConfig,
@@ -27,11 +30,16 @@ class PersistentKvCache():
         output = await self.openai_serving_chat.create_chat_completion(ChatCompletionRequest(
             messages = messages, 
             index_id = index_id, 
+            should_index = True,
             model = request.model,
             max_tokens=1)
         )
         # print("result is:" + output.usage.completion_tokens)
         return index_id
+    
+    async def create_chat_opt_completion(self, request: OptimizedCompletionRequest):
+        return await self.openai_serving_chat.create_chat_completion(request)
+
 
     def _generate_index_id(self):
         return str(uuid.uuid4())

@@ -28,7 +28,7 @@ from vllm.entrypoints.openai.protocol import (ChatCompletionRequest,
                                               EmbeddingRequest, ErrorResponse)
 from vllm.entrypoints.openai.serving_chat import OpenAIServingChat
 from vllm.entrypoints.openai.serving_completion import OpenAIServingCompletion
-from vllm.entrypoints.openai.persistent_kv_cache import (PersistentKvCache, IndexContextRequest)
+from vllm.entrypoints.openai.persistent_kv_cache import (OptimizedCompletionRequest, PersistentKvCache, IndexContextRequest)
 from vllm.entrypoints.openai.serving_embedding import OpenAIServingEmbedding
 from vllm.logger import init_logger
 from vllm.usage.usage_lib import UsageContext
@@ -105,6 +105,21 @@ async def show_version():
 async def create_chat_completion(request: ChatCompletionRequest,
                                  raw_request: Request):
     generator = await openai_serving_chat.create_chat_completion(
+        request, raw_request)
+    if isinstance(generator, ErrorResponse):
+        return JSONResponse(content=generator.model_dump(),
+                            status_code=generator.code)
+    if request.stream:
+        return StreamingResponse(content=generator,
+                                 media_type="text/event-stream")
+    else:
+        assert isinstance(generator, ChatCompletionResponse)
+        return JSONResponse(content=generator.model_dump())
+
+@app.post("/v1/chat/opt_completions")
+async def create_chat_opt_completion(request: OptimizedCompletionRequest,
+                                 raw_request: Request):
+    generator = await persistent_kv_cache.create_chat_opt_completion(
         request, raw_request)
     if isinstance(generator, ErrorResponse):
         return JSONResponse(content=generator.model_dump(),

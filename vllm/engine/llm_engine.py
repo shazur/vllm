@@ -726,9 +726,9 @@ class LLMEngine:
               if index_id is not None:         
                 #get relevant blocks to save
                 blocks = list(seq_group_metadata.block_tables.values())[0]  
-                kv_caches_dict = {index_id: {"data": self._select_blocks(o.kv_caches, blocks)}}
+                persistent_kv_caches = PersistentKVCacheDict(index_id, o.kv_caches, blocks)
                 #write kv_caches to disk - TODO: should be async
-                torch.save(kv_caches_dict, "persistent_kv_cache.pt")  #todo: filename should be index_id
+                torch.save(persistent_kv_caches.getKvCaches(), "persistent_kv_cache.pt")  #todo: filename should be index_id
                 print("meow request finished!!!")
 
         # Free the finished sequence groups.
@@ -1014,3 +1014,9 @@ class LLMEngine:
 
     def check_health(self) -> None:
         self.model_executor.check_health()
+
+class PersistentKVCacheDict:
+    def __init__(self, index_id, kv_caches, blocks):
+        self.dict = {index_id: {"data": self._select_blocks(kv_caches, blocks)}}
+    def getKvCaches(self):
+        return self.dict
