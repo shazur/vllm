@@ -120,7 +120,8 @@ class SequenceData:
         self,
         prompt_token_ids: List[int],
         output_token_ids: Optional[List[int]] = None,
-        index_id: Optional[str] = None
+        index_id: Optional[str] = None,
+        should_index: bool = False
     ) -> None:
         if output_token_ids is None:
             output_token_ids = []
@@ -129,6 +130,7 @@ class SequenceData:
         self._prompt_token_ids_tuple: Tuple[int, ...] = tuple(prompt_token_ids)
         self.output_token_ids = output_token_ids
         self.index_id = index_id
+        self.should_index = should_index
         self.cumulative_logprob = 0.0
         # The number of tokens that are computed (that run against the model).
         self._num_computed_tokens = 0
@@ -152,6 +154,9 @@ class SequenceData:
     
     def get_index_id(self) -> str:
         return self.index_id
+    
+    def should_index(self) -> bool:
+        return self.should_index
 
     def get_prefix_token_ids(
             self, num_tokens: int
@@ -232,7 +237,8 @@ class Sequence:
         block_size: int,
         eos_token_id: Optional[int] = None,
         lora_request: Optional[LoRARequest] = None,
-        index_id: Optional[str] = None
+        index_id: Optional[str] = None,
+        should_index: bool = False
     ) -> None:
         self.seq_id = seq_id
         self.inputs = inputs
@@ -240,7 +246,7 @@ class Sequence:
         self.eos_token_id = eos_token_id
         self.lora_request = lora_request
 
-        self.data = SequenceData(self.prompt_token_ids, index_id=index_id)
+        self.data = SequenceData(self.prompt_token_ids, index_id=index_id, should_index=should_index)
         self.output_logprobs: SampleLogprobs = []
         self.output_text = ""
 
