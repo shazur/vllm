@@ -725,7 +725,7 @@ class LLMEngine:
               seq_group_metadata = o.seq_group_metadata_list[0]
               seq_data = list(seq_group_metadata.seq_data.values())[0]
               index_id = seq_data.get_index_id()
-              should_persist = seq_data.should_index()
+              should_persist = seq_data.should_persist()
 
               if should_persist and index_id is not None:         
                 #get relevant blocks to save

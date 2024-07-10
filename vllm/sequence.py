@@ -155,7 +155,7 @@ class SequenceData:
     def get_index_id(self) -> str:
         return self.index_id
     
-    def should_index(self) -> bool:
+    def should_persist(self) -> bool:
         return self.should_index
 
     def get_prefix_token_ids(
