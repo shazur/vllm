@@ -238,7 +238,7 @@ class ModelRunner:
         block_size = self.block_size
         return (self.max_seq_len_to_capture + block_size - 1) // block_size
 
-    def _prepare_model_input(
+    def _prepare_model_input( #meow here update before computer id used. then set cache from cache
         self,
         seq_group_metadata_list: List[SequenceGroupMetadata],
     ) -> ModelInput:

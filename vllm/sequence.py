@@ -121,7 +121,8 @@ class SequenceData:
         prompt_token_ids: List[int],
         output_token_ids: Optional[List[int]] = None,
         index_id: Optional[str] = None,
-        should_index: bool = False
+        should_index: bool = False,
+        inputs: Optional[LLMInputs] = None
     ) -> None:
         if output_token_ids is None:
             output_token_ids = []
@@ -131,6 +132,7 @@ class SequenceData:
         self.output_token_ids = output_token_ids
         self.index_id = index_id
         self.should_index = should_index
+        self.inputs = inputs
         self.cumulative_logprob = 0.0
         # The number of tokens that are computed (that run against the model).
         self._num_computed_tokens = 0
@@ -246,7 +248,7 @@ class Sequence:
         self.eos_token_id = eos_token_id
         self.lora_request = lora_request
 
-        self.data = SequenceData(self.prompt_token_ids, index_id=index_id, should_index=should_index)
+        self.data = SequenceData(self.prompt_token_ids, index_id=index_id, should_index=should_index, inputs=inputs)
         self.output_logprobs: SampleLogprobs = []
         self.output_text = ""
 
