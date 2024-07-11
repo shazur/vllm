@@ -21,7 +21,7 @@ class PersistentKvCache():
     def __init__(self, engine: AsyncLLMEngine, model_config: ModelConfig,
                  served_model_names: List[str],
                  lora_modules: Optional[List[LoRAModulePath]]) -> None:
-        self.openai_serving_chat = OpenAIServingChat(engine, model_config, served_model_names, lora_modules)
+        self.openai_serving_chat = OpenAIServingChat(engine, model_config, served_model_names, 'user', lora_modules)
         pass
 
     async def populate(self, request: IndexContextRequest): 
