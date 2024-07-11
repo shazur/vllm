@@ -1,6 +1,6 @@
 import time
 from contextlib import contextmanager
-from typing import TYPE_CHECKING, ClassVar, Iterable, List, Optional
+from typing import TYPE_CHECKING, Any, ClassVar, Dict, Iterable, List, Optional, TypedDict
 from typing import Sequence as GenericSequence
 from typing import Type, TypeVar, Union
 import torch
@@ -996,12 +996,16 @@ class LLMEngine:
     def check_health(self) -> None:
         self.model_executor.check_health()
 
+class KVCacheMetadata(TypedDict):
+    data: List[Any]
+    prompt: str
+
 class PersistentKVCacheDict:
     def __init__(self, index_id, kv_caches, blocks, prompt):
-        self.dict = {index_id: {"prompt": prompt,"data": self._select_blocks(kv_caches, blocks)}}
+        self.dict = {index_id: KVCacheMetadata({"prompt": prompt,"data": self._select_blocks(kv_caches, blocks)})}
     def getKvCaches(self):
         return self.dict
-    
+
     def _select_blocks(self, tensor_list, indices):
         # Convert indices to a tensor if it's not already
         if not isinstance(indices, torch.Tensor):
@@ -1024,3 +1028,16 @@ class PersistentKVCacheDict:
             results.append(result)
     
         return results
+    
+    @classmethod
+    def load_from_disk(cls, filepath):
+        # Load the dictionary from disk
+        loaded_dict = torch.load(filepath)
+        
+        # Create an instance of the class
+        instance = cls.__new__(cls)
+        
+        # Directly set the dict attribute
+        instance.dict = loaded_dict
+        
+        return instance

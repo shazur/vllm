@@ -1,4 +1,4 @@
-from typing import (TYPE_CHECKING, List, Literal, Optional, Sequence,
+from typing import (TYPE_CHECKING, Any, List, Literal, Optional, Sequence,
                     TypedDict, Union, cast, overload)
 
 from typing_extensions import NotRequired
@@ -119,7 +119,9 @@ The inputs to the LLM, which can take one of the following forms:
 - A tokenized prompt (:class:`TokensPrompt`)
 """
 
-PromptInputs = Union[str, TextPrompt, TokensPrompt, TextTokensPrompt]
+
+
+PromptInputs = Union[str, TextPrompt, TokensPrompt, TextTokensPrompt, List[Any]]
 """Same as :const:`PromptStrictInputs` but additionally accepts
 :class:`TextTokensPrompt`."""
 
@@ -128,3 +130,10 @@ class LLMInputs(TypedDict):
     prompt_token_ids: List[int]
     prompt: NotRequired[Optional[str]]
     multi_modal_data: NotRequired[Optional["MultiModalData"]]
+    indexed_prompt: NotRequired[Optional[str]]
+    indexed_prompt_ids: NotRequired[List[int]]
+    new_prompt: NotRequired[Optional[str]]
+    new_prompt_token_ids: NotRequired[List[int]]
+    indexed_kv_cache: NotRequired[List[any]]
+
+

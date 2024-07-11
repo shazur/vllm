@@ -10,7 +10,7 @@ import vllm.envs as envs
 from vllm.config import DecodingConfig, ModelConfig
 from vllm.core.scheduler import SchedulerOutputs
 from vllm.engine.arg_utils import AsyncEngineArgs
-from vllm.engine.llm_engine import LLMEngine
+from vllm.engine.llm_engine import LLMEngine, PersistentKVCacheDict
 from vllm.executor.ray_utils import initialize_ray_cluster, ray
 from vllm.inputs import LLMInputs, PromptInputs
 from vllm.logger import init_logger
@@ -277,7 +277,14 @@ class _AsyncLLMEngine(LLMEngine):
 
         return LLMInputs(prompt_token_ids=prompt_token_ids,
                          prompt=inputs.get("prompt"),
-                         multi_modal_data=inputs.get("multi_modal_data"))
+                         multi_modal_data=inputs.get("multi_modal_data"),
+                         indexed_prompt= inputs.get("indexed_prompt"),
+                         indexed_prompt_ids= inputs.get("indexed_prompt_ids"),
+                         new_prompt= inputs.get("new_prompt"),
+                         new_prompt_token_ids= inputs.get("new_prompt_token_ids"),
+                         indexed_kv_cache = inputs.get("indexed_kv_cache")
+                         
+                         )
 
     async def add_request_async(
         self,
@@ -294,11 +301,7 @@ class _AsyncLLMEngine(LLMEngine):
                              "not enabled!")
         if arrival_time is None:
             arrival_time = time.time()
-        
-        # meow load cache 
-        #if (index_id and not should_index):
-            # load cache from disk, including num of tokens
-            #  
+
         processed_inputs = await self.process_model_inputs_async(
             request_id=request_id, inputs=inputs, lora_request=lora_request)
 

@@ -1,3 +1,6 @@
+#history
+.history*
+
 #indexed kv caches and such
 *.pt
 

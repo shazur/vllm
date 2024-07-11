@@ -10,6 +10,7 @@ from fastapi import Request
 from openai.types.chat import (ChatCompletionContentPartImageParam,
                                ChatCompletionContentPartTextParam)
 
+from vllm.engine.llm_engine import PersistentKVCacheDict
 from vllm.config import ModelConfig, VisionLanguageConfig
 from vllm.engine.async_llm_engine import AsyncLLMEngine
 from vllm.entrypoints.openai.protocol import (
@@ -238,11 +239,24 @@ class OpenAIServingChat(OpenAIServing):
 
         request_id = f"cmpl-{random_uuid()}"
         try:
+            
+
+        
+            # meow load cache if requested    
+            cached_request_metadata = None
+            if request.index_id is not None and not request.should_index:
+              cached_request_dict = PersistentKVCacheDict.load_from_disk("persistent_kv_cache.pt").getKvCaches()
+          
+              if request.index_id in cached_request_dict:
+                  cached_request_metadata = cached_request_dict[request.index_id]
+
             # Tokenize/detokenize depending on prompt format (string/token list)
-            prompt_ids, prompt_text = self._validate_prompt_and_tokenize(
+            prompt_ids, prompt_text,indexed_prompt_ids = self._validate_prompt_and_tokenize(
                 request,
                 prompt=prompt,
-                add_special_tokens=request.add_special_tokens)
+                add_special_tokens=request.add_special_tokens,
+                cached_request_metadata=cached_request_metadata)
+  
             sampling_params = request.to_sampling_params()
             lora_request = self._maybe_get_lora(request)
             decoding_config = await self.engine.get_decoding_config()
@@ -260,12 +274,25 @@ class OpenAIServingChat(OpenAIServing):
         except ValueError as e:
             return self.create_error_response(str(e))
 
-        inputs: PromptInputs = {
-            "prompt": prompt_text,
-            "prompt_token_ids": prompt_ids,
-        }
+        if indexed_prompt_ids is not None and len(indexed_prompt_ids) > 0:
+            indexed_prompt = cached_request_metadata["prompt"]
+            inputs: PromptInputs = {
+              "prompt": indexed_prompt + prompt_text,
+              "prompt_token_ids": indexed_prompt_ids + prompt_ids,
+              "indexed_prompt": indexed_prompt,
+              "indexed_prompt_ids": indexed_prompt_ids,
+              "new_prompt": prompt_text,
+              "new_prompt_token_ids": prompt_ids,
+              "indexed_kv_cache": cached_request_metadata["data"]
+          }
+        else:
+          inputs: PromptInputs = {
+              "prompt": prompt_text,
+              "prompt_token_ids": prompt_ids
+          }
         if image_data is not None:
             inputs["multi_modal_data"] = image_data
+            
 
         result_generator = self.engine.generate(
             inputs,

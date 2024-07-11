@@ -6,6 +6,8 @@ from typing import Any, Dict, List, Optional, Tuple, Union
 from pydantic import Field
 from typing_extensions import Annotated
 
+from vllm.engine.llm_engine import KVCacheMetadata
+
 from vllm.config import ModelConfig
 from vllm.engine.async_llm_engine import AsyncLLMEngine
 from vllm.entrypoints.openai.protocol import (ChatCompletionRequest,
@@ -131,7 +133,8 @@ class OpenAIServing:
             prompt_ids: Optional[List[int]] = None,
             truncate_prompt_tokens: Optional[Annotated[int,
                                                        Field(ge=1)]] = None,
-            add_special_tokens: Optional[bool] = True
+            add_special_tokens: Optional[bool] = True,
+            cached_request_metadata: Optional[KVCacheMetadata ] = None
     ) -> Tuple[List[int], str]:
         if not (prompt or prompt_ids):
             raise ValueError("Either prompt or prompt_ids should be provided.")
@@ -183,6 +186,10 @@ class OpenAIServing:
                     f"Please reduce the length of the messages.", )
             request.max_tokens = self.max_model_len - token_num
 
+        indexed_prompt_ids = None
+        if (cached_request_metadata is not None):
+            indexed_prompt_ids = self.tokenizer(cached_request_metadata["prompt"], **tokenizer_kwargs).input_ids
+
         if token_num + request.max_tokens > self.max_model_len:
             raise ValueError(
                 f"This model's maximum context length is "
@@ -192,7 +199,7 @@ class OpenAIServing:
                 f"{request.max_tokens} in the completion). "
                 f"Please reduce the length of the messages or completion.", )
         else:
-            return input_ids, input_text
+            return input_ids, input_text,indexed_prompt_ids
 
     def _get_decoded_token(self, logprob: Logprob, token_id: int) -> str:
         if logprob.decoded_token is not None:
