@@ -742,7 +742,7 @@ class ModelRunner:
                 sampling_metadata, lora_requests, lora_mapping,
                 multi_modal_kwargs)
     
-    def copy_cached_blocks(self, kv_caches, seq_group_metadata_list, computed_block_nums):
+    def copy_cached_blocks(self, kv_caches, loaded_cache, computed_block_nums):
       """
       Copies blocks from a loaded cache into a pre-allocated kv_caches at specific positions.
 
@@ -751,8 +751,7 @@ class ModelRunner:
       seq_group_metadata_list (list): The loaded cache with specific blocks to be copied.
       computed_block_nums (list): The block positions to copy the data into.
       """
-      # Loaded cache
-      loaded_cache = seq_group_metadata_list[0].seq_data[0].inputs['indexed_kv_cache']
+      
 
       # Iterate over each layer
       for layer_idx in range(len(kv_caches)):
@@ -790,12 +789,17 @@ class ModelRunner:
         else:
             model_executable = self.model
         
-        if seq_group_metadata_list[0].seq_data[0].inputs:
-          computed_blocks = seq_group_metadata_list[0].computed_block_nums
-          indexed_kv_cache = seq_group_metadata_list[0].seq_data[0].inputs['indexed_kv_cache']
-          
-          if seq_group_metadata_list[0].seq_data[0].inputs and indexed_kv_cache is not None:
-            self.copy_cached_blocks(kv_caches, seq_group_metadata_list, computed_blocks)
+
+        for seq_group_metadata in seq_group_metadata_list:
+            seq_ids = list(seq_group_metadata.seq_data.keys())
+            for seq_id in seq_ids:
+              seq_data_meta = seq_group_metadata
+              if seq_data_meta.seq_data[seq_id].inputs:
+                computed_blocks = seq_data_meta.computed_block_nums
+                indexed_kv_cache = seq_data_meta.seq_data[seq_id].inputs['indexed_kv_cache']
+              
+              if seq_data_meta.seq_data[seq_id].inputs and indexed_kv_cache is not None:
+                self.copy_cached_blocks(kv_caches, indexed_kv_cache, computed_blocks)    
 
         hidden_states = model_executable(
             input_ids=input_tokens,
