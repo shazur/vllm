@@ -281,7 +281,7 @@ class OpenAIServingChat(OpenAIServing):
             indexed_prompt = cached_request_metadata["prompt"]
             inputs: PromptInputs = {
               "prompt": indexed_prompt + prompt_text,
-              "prompt_token_ids": indexed_prompt_ids + prompt_ids,
+              "prompt_token_ids": indexed_prompt_ids[:-1] + prompt_ids + indexed_prompt_ids[-1:],
               "indexed_prompt": indexed_prompt,
               "indexed_prompt_ids": indexed_prompt_ids,
               "new_prompt": prompt_text,

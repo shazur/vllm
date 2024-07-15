@@ -177,8 +177,17 @@ class OpenAIServing:
                     "truncation": True,
                     "max_length": truncate_prompt_tokens,
                 })
-            
-            input_ids = self.tokenizer(prompt, **tokenizer_kwargs).input_ids
+            if (cached_request_metadata is not None): # meow todo, make less ugly 
+                # tokenize prompt, remove special characters, detokenize prompt!
+                #because this is like a "2nd part" of a prompt that was indexed with special characters. no need for those twice. it hurts ! 
+                input_ids = self.tokenizer(prompt, **tokenizer_kwargs).input_ids
+                special_token_ids = list(self.tokenizer.added_tokens_encoder.values())
+                no_special_chars_input_ids = [token_id for token_id in input_ids if token_id not in special_token_ids]
+                input_ids = no_special_chars_input_ids
+                prompt = self.tokenizer.decode(no_special_chars_input_ids)
+            else:
+              input_ids = self.tokenizer(prompt, **tokenizer_kwargs).input_ids
+
             if (pad_prompt_to_block_size):
                input_ids = self.pad_prompt_to_fit_block_size(input_ids) 
         elif truncate_prompt_tokens is not None:

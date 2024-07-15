@@ -793,12 +793,11 @@ class ModelRunner:
         for seq_group_metadata in seq_group_metadata_list:
             seq_ids = list(seq_group_metadata.seq_data.keys())
             for seq_id in seq_ids:
-              seq_data_meta = seq_group_metadata
-              if seq_data_meta.seq_data[seq_id].inputs:
-                computed_blocks = seq_data_meta.computed_block_nums
-                indexed_kv_cache = seq_data_meta.seq_data[seq_id].inputs['indexed_kv_cache']
+              if seq_group_metadata.seq_data[seq_id].inputs:
+                computed_blocks = seq_group_metadata.computed_block_nums
+                indexed_kv_cache = seq_group_metadata.seq_data[seq_id].inputs['indexed_kv_cache']
               
-              if seq_data_meta.seq_data[seq_id].inputs and indexed_kv_cache is not None:
+              if seq_group_metadata.seq_data[seq_id].inputs and indexed_kv_cache is not None:
                 self.copy_cached_blocks(kv_caches, indexed_kv_cache, computed_blocks)    
 
         hidden_states = model_executable(
