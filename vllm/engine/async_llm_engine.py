@@ -282,6 +282,7 @@ class _AsyncLLMEngine(LLMEngine):
                          indexed_prompt_ids= inputs.get("indexed_prompt_ids"),
                          new_prompt= inputs.get("new_prompt"),
                          new_prompt_token_ids= inputs.get("new_prompt_token_ids"),
+                         num_of_computed_tokens = inputs.get("num_of_computed_tokens"),
                          indexed_kv_cache = inputs.get("indexed_kv_cache")
                          
                          )

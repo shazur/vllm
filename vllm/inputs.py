@@ -135,5 +135,6 @@ class LLMInputs(TypedDict):
     new_prompt: NotRequired[Optional[str]]
     new_prompt_token_ids: NotRequired[List[int]]
     indexed_kv_cache: NotRequired[List[any]]
+    num_of_computed_token: NotRequired[List[int]]
 
 

@@ -239,23 +239,26 @@ class OpenAIServingChat(OpenAIServing):
 
         request_id = f"cmpl-{random_uuid()}"
         try:
-            
-
-        
-            # meow load cache if requested    
+            # meow input things: load cache if requested , pad input to block size 
             cached_request_metadata = None
-            if request.index_id is not None and not request.should_index:
+
+            is_query_indexed_data_request = request.index_id is not None and not request.should_index 
+            pad_prompt_to_block_size = request.should_index #pad request so that the input will be exactly "block_size" when indexed
+            
+            if is_query_indexed_data_request:
               cached_request_dict = PersistentKVCacheDict.load_from_disk("persistent_kv_cache.pt").getKvCaches()
           
               if request.index_id in cached_request_dict:
                   cached_request_metadata = cached_request_dict[request.index_id]
+                
 
             # Tokenize/detokenize depending on prompt format (string/token list)
             prompt_ids, prompt_text,indexed_prompt_ids = self._validate_prompt_and_tokenize(
                 request,
                 prompt=prompt,
                 add_special_tokens=request.add_special_tokens,
-                cached_request_metadata=cached_request_metadata)
+                cached_request_metadata=cached_request_metadata,
+                pad_prompt_to_block_size=pad_prompt_to_block_size)
   
             sampling_params = request.to_sampling_params()
             lora_request = self._maybe_get_lora(request)
@@ -283,7 +286,8 @@ class OpenAIServingChat(OpenAIServing):
               "indexed_prompt_ids": indexed_prompt_ids,
               "new_prompt": prompt_text,
               "new_prompt_token_ids": prompt_ids,
-              "indexed_kv_cache": cached_request_metadata["data"]
+              "indexed_kv_cache": cached_request_metadata["data"],
+              "num_of_computed_tokens": cached_request_metadata["num_of_computed_tokens"]
           }
         else:
           inputs: PromptInputs = {

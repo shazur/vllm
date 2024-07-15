@@ -707,7 +707,7 @@ class LLMEngine:
               if should_persist and index_id is not None:         
                 #get relevant blocks to save
                 blocks = list(seq_group_metadata.block_tables.values())[0]  
-                persistent_kv_caches = PersistentKVCacheDict(index_id, o.kv_caches, blocks, seq_group_metadata.prompt)
+                persistent_kv_caches = PersistentKVCacheDict(index_id, o.kv_caches, blocks, seq_group_metadata.prompt, seq_data._num_computed_tokens)
                 #write kv_caches to disk - TODO: should be async
                 torch.save(persistent_kv_caches.getKvCaches(), "persistent_kv_cache.pt")  #todo: filename should be index_id
                 print("meow request finished!!!")
@@ -998,11 +998,16 @@ class LLMEngine:
 
 class KVCacheMetadata(TypedDict):
     data: List[Any]
+    num_of_computed_tokens: int
     prompt: str
 
 class PersistentKVCacheDict:
-    def __init__(self, index_id, kv_caches, blocks, prompt):
-        self.dict = {index_id: KVCacheMetadata({"prompt": prompt,"data": self._select_blocks(kv_caches, blocks)})}
+    def __init__(self, index_id, kv_caches, blocks, prompt, num_of_computed_tokens):
+        self.dict = {index_id: KVCacheMetadata({
+            "prompt": prompt, 
+            "num_of_computed_tokens":num_of_computed_tokens, 
+            "data": self._select_blocks(kv_caches, blocks)}
+            )}
     def getKvCaches(self):
         return self.dict
 

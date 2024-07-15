@@ -125,6 +125,25 @@ class OpenAIServing:
         # if _check_model has been called earlier, this will be unreachable
         raise ValueError(f"The model `{request.model}` does not exist.")
 
+        # meow adjusting input to be a multiple of 16:
+        # meow todo: 
+        # 1. change from "16" to block size.
+        # 2. remove the special toekens thingy because add_special_tokens=False works i think!
+
+    def pad_prompt_to_fit_block_size(self, prompt_ids):
+      # Identify the first non-special token, it will be a "space" token
+      space_token_ids = self.tokenizer(' ', add_special_tokens=False).input_ids
+      special_tokens = [getattr(self.tokenizer, attr, None) for attr in self.tokenizer.SPECIAL_TOKENS_ATTRIBUTES]
+      space_token_id = next(token_id for token_id in space_token_ids if token_id not in special_tokens)
+
+      # Calculate the number of space tokens needed
+      num_spaces_needed = (16 - len(prompt_ids) % 16) % 16
+
+      # Insert the space tokens before the last element (which is assumed to be a special token)
+      prompt_ids = prompt_ids[:-1] + [space_token_id] * num_spaces_needed + [prompt_ids[-1]]
+
+      return prompt_ids
+  
     def _validate_prompt_and_tokenize(
             self,
             request: Union[ChatCompletionRequest, CompletionRequest,
@@ -134,7 +153,8 @@ class OpenAIServing:
             truncate_prompt_tokens: Optional[Annotated[int,
                                                        Field(ge=1)]] = None,
             add_special_tokens: Optional[bool] = True,
-            cached_request_metadata: Optional[KVCacheMetadata ] = None
+            cached_request_metadata: Optional[KVCacheMetadata ] = None,
+            pad_prompt_to_block_size: Optional[bool] = False
     ) -> Tuple[List[int], str]:
         if not (prompt or prompt_ids):
             raise ValueError("Either prompt or prompt_ids should be provided.")
@@ -157,7 +177,10 @@ class OpenAIServing:
                     "truncation": True,
                     "max_length": truncate_prompt_tokens,
                 })
+            
             input_ids = self.tokenizer(prompt, **tokenizer_kwargs).input_ids
+            if (pad_prompt_to_block_size):
+               input_ids = self.pad_prompt_to_fit_block_size(input_ids) 
         elif truncate_prompt_tokens is not None:
             input_ids = prompt_ids[-truncate_prompt_tokens:]
         else:
@@ -186,9 +209,11 @@ class OpenAIServing:
                     f"Please reduce the length of the messages.", )
             request.max_tokens = self.max_model_len - token_num
 
-        indexed_prompt_ids = None
+        indexed_prompt_ids = None #meow tokenize cached input
         if (cached_request_metadata is not None):
+            
             indexed_prompt_ids = self.tokenizer(cached_request_metadata["prompt"], **tokenizer_kwargs).input_ids
+            indexed_prompt_ids = self.pad_prompt_to_fit_block_size(indexed_prompt_ids) 
 
         if token_num + request.max_tokens > self.max_model_len:
             raise ValueError(

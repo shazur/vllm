@@ -2,6 +2,7 @@ import gc
 import sys
 import time
 import warnings
+import math
 from collections import defaultdict
 from typing import Dict, List, NamedTuple, Optional, Set, Tuple, Union
 
@@ -304,8 +305,24 @@ class ModelRunner:
         for seq_group_metadata in seq_group_metadata_list:
             seq_ids = list(seq_group_metadata.seq_data.keys())
             is_prompt = seq_group_metadata.is_prompt
+  
 
+            #shyshyshy
             for seq_id in seq_ids:
+                seq_data = seq_group_metadata.seq_data[seq_id]
+                inputs = seq_data.inputs
+                if inputs is not None and is_prompt and 'indexed_prompt_ids' in inputs and isinstance(inputs['indexed_prompt_ids'], list) and len(inputs['indexed_prompt_ids']) > 0:
+                    meow_prefill_time = True
+                    #num_indexed_prompt_ids = len(seq_data.inputs['indexed_prompt_ids'])
+                    num_of_computed_tokens = seq_data.inputs['num_of_computed_tokens']
+                    num_indexed_blocks = math.ceil(num_of_computed_tokens / self.block_size) # math no longer needed.
+                    
+                    available_blocks = seq_group_metadata.block_tables[seq_id]
+                    # תכנות דורסני!!!!!!!!!!!!!
+                    seq_group_metadata.computed_block_nums = available_blocks[:num_indexed_blocks]
+                    #seq_data.update_num_computed_tokens(num_of_computed_tokens)
+
+
                 computed_block_nums = seq_group_metadata.computed_block_nums
                 if (self.scheduler_config is not None
                         and self.scheduler_config.chunked_prefill_enabled
@@ -315,7 +332,7 @@ class ModelRunner:
                         "chunked prefill cannot be used with prefix caching "
                         "now.")
 
-                seq_data = seq_group_metadata.seq_data[seq_id]
+               
                 if is_prompt:
                     context_len = seq_data.get_num_computed_tokens()
                 else:
@@ -725,6 +742,30 @@ class ModelRunner:
                 sampling_metadata, lora_requests, lora_mapping,
                 multi_modal_kwargs)
     
+    def copy_cached_blocks(self, kv_caches, seq_group_metadata_list, computed_block_nums):
+      """
+      Copies blocks from a loaded cache into a pre-allocated kv_caches at specific positions.
+
+      Parameters:
+      kv_caches (list): A list of pre-allocated kv_caches for each layer.
+      seq_group_metadata_list (list): The loaded cache with specific blocks to be copied.
+      computed_block_nums (list): The block positions to copy the data into.
+      """
+      # Loaded cache
+      loaded_cache = seq_group_metadata_list[0].seq_data[0].inputs['indexed_kv_cache']
+
+      # Iterate over each layer
+      for layer_idx in range(len(kv_caches)):
+          # kv_cache for the current layer
+          kv_cache_layer = kv_caches[layer_idx]
+          loaded_cache_layer = loaded_cache[layer_idx]
+          
+          # Iterate over each block that needs to be copied
+          for i, block_num in enumerate(computed_block_nums):
+              kv_cache_layer[:, block_num, :, :, :] = loaded_cache_layer[:, i, :, :, :]
+
+
+
     def _prefill(
         self,
         seq_group_metadata_list: Optional[List[SequenceGroupMetadata]],
@@ -748,6 +789,13 @@ class ModelRunner:
             model_executable = self.graph_runners[graph_batch_size]
         else:
             model_executable = self.model
+        
+        if seq_group_metadata_list[0].seq_data[0].inputs:
+          computed_blocks = seq_group_metadata_list[0].computed_block_nums
+          indexed_kv_cache = seq_group_metadata_list[0].seq_data[0].inputs['indexed_kv_cache']
+          
+          if seq_group_metadata_list[0].seq_data[0].inputs and indexed_kv_cache is not None:
+            self.copy_cached_blocks(kv_caches, seq_group_metadata_list, computed_blocks)
 
         hidden_states = model_executable(
             input_ids=input_tokens,
