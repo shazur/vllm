@@ -743,26 +743,28 @@ class ModelRunner:
                 multi_modal_kwargs)
     
     def copy_cached_blocks(self, kv_caches, loaded_cache, computed_block_nums):
-      """
-      Copies blocks from a loaded cache into a pre-allocated kv_caches at specific positions.
+        """
+        Copies blocks from a loaded cache into a pre-allocated kv_caches at specific positions.
 
-      Parameters:
-      kv_caches (list): A list of pre-allocated kv_caches for each layer.
-      seq_group_metadata_list (list): The loaded cache with specific blocks to be copied.
-      computed_block_nums (list): The block positions to copy the data into.
-      """
-      
+        Parameters:
+        kv_caches (list): A list of pre-allocated kv_caches for each layer.
+        seq_group_metadata_list (list): The loaded cache with specific blocks to be copied.
+        computed_block_nums (list): The block positions to copy the data into.
+        """
+        start_time = time.time()
 
-      # Iterate over each layer
-      for layer_idx in range(len(kv_caches)):
-          # kv_cache for the current layer
-          kv_cache_layer = kv_caches[layer_idx]
-          loaded_cache_layer = loaded_cache[layer_idx]
-          
-          # Iterate over each block that needs to be copied
-          for i, block_num in enumerate(computed_block_nums):
-              kv_cache_layer[:, block_num, :, :, :] = loaded_cache_layer[:, i, :, :, :]
+        # Iterate over each layer
+        for layer_idx in range(len(kv_caches)):
+            # kv_cache for the current layer
+            kv_cache_layer = kv_caches[layer_idx]
+            loaded_cache_layer = loaded_cache[layer_idx]
 
+            # Iterate over each block that needs to be copied
+            for i, block_num in enumerate(computed_block_nums):
+                kv_cache_layer[:, block_num, :, :, :] = loaded_cache_layer[:, i, :, :, :]
+
+        end_time = time.time()
+        print(f"copy_cached_blocks execution time: {end_time - start_time:.6f} seconds")
 
 
     def _prefill(
@@ -797,8 +799,9 @@ class ModelRunner:
                 computed_blocks = seq_group_metadata.computed_block_nums
                 indexed_kv_cache = seq_group_metadata.seq_data[seq_id].inputs['indexed_kv_cache']
               
-              if seq_group_metadata.seq_data[seq_id].inputs and indexed_kv_cache is not None:
-                self.copy_cached_blocks(kv_caches, indexed_kv_cache, computed_blocks)    
+              if seq_group_metadata.seq_data[seq_id].inputs and indexed_kv_cache is not None and seq_group_metadata.seq_data[seq_id].cache_already_copied is not True:
+                self.copy_cached_blocks(kv_caches, indexed_kv_cache, computed_blocks)
+                seq_group_metadata.seq_data[seq_id].cache_already_copied = True    
 
         hidden_states = model_executable(
             input_ids=input_tokens,

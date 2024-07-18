@@ -1036,6 +1036,7 @@ class PersistentKVCacheDict:
     
     @classmethod
     def load_from_disk(cls, filepath):
+        start_time = time.time()
         # Load the dictionary from disk
         loaded_dict = torch.load(filepath)
         
@@ -1045,4 +1046,7 @@ class PersistentKVCacheDict:
         # Directly set the dict attribute
         instance.dict = loaded_dict
         
+        end_time = time.time()
+        print(f"loading cache from disk took: {end_time - start_time:.6f} seconds")
+
         return instance

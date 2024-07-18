@@ -122,7 +122,8 @@ class SequenceData:
         output_token_ids: Optional[List[int]] = None,
         index_id: Optional[str] = None,
         should_index: bool = False,
-        inputs: Optional[LLMInputs] = None
+        inputs: Optional[LLMInputs] = None,
+        cache_already_copied: bool = False
     ) -> None:
         if output_token_ids is None:
             output_token_ids = []
@@ -137,6 +138,7 @@ class SequenceData:
         # The number of tokens that are computed (that run against the model).
         self._num_computed_tokens = 0
         self._stage: SequenceStage = SequenceStage.PREFILL
+        self.cache_already_copied = False
 
     def append_token_id(self, token_id: int, logprob: float) -> None:
         self.output_token_ids.append(token_id)
