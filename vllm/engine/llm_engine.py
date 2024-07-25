@@ -39,6 +39,11 @@ from vllm.transformers_utils.tokenizer_group import (BaseTokenizerGroup,
 from vllm.usage.usage_lib import (UsageContext, is_usage_stats_enabled,
                                   usage_message)
 from vllm.utils import Counter
+from datetime import datetime
+
+from vllm.meow_stats import MeowStats
+
+meow_stats = MeowStats()
 
 logger = init_logger(__name__)
 _LOCAL_LOGGING_INTERVAL_SEC = 5
@@ -698,6 +703,7 @@ class LLMEngine:
             if seq_group_meta.do_sample:
                 self.output_processor.process_outputs(seq_group, outputs)
             if (seq_group is not None and seq_group.is_finished()):
+              logger.info(f"_process_model_outputs: request finished exact_time: {datetime.now().strftime('%Y-%m-%d %H:%M:%S.%f')[:-3]}")
               o = output[0]
               seq_group_metadata = o.seq_group_metadata_list[0]
               seq_data = list(seq_group_metadata.seq_data.values())[0]
@@ -1036,9 +1042,9 @@ class PersistentKVCacheDict:
     
     @classmethod
     def load_from_disk(cls, filepath):
-        start_time = time.time()
+        start_time = datetime.now() 
         # Load the dictionary from disk
-        loaded_dict = torch.load(filepath)
+        loaded_dict = torch.load(filepath, mmap=True, map_location='cpu') #todo meow- go back to gpu, this is slow
         
         # Create an instance of the class
         instance = cls.__new__(cls)
@@ -1046,7 +1052,11 @@ class PersistentKVCacheDict:
         # Directly set the dict attribute
         instance.dict = loaded_dict
         
-        end_time = time.time()
-        print(f"loading cache from disk took: {end_time - start_time:.6f} seconds")
+        duration = (datetime.now() - start_time).total_seconds()
+
+        #todo: add stats per MB \ per loaded block
+        meow_stats.add_operation_duration("load_cache_from_disk", duration) 
+
+        print(f"loading cache from disk took: {duration} seconds. exact_time: {datetime.now().strftime('%Y-%m-%d %H:%M:%S.%f')[:-3]}")
 
         return instance

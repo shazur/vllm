@@ -10,6 +10,7 @@ import numpy as np
 import torch
 import torch.nn as nn
 
+from datetime import datetime
 from vllm.attention import AttentionMetadata, get_attn_backend
 from vllm.config import (CacheConfig, DeviceConfig, LoadConfig, LoRAConfig,
                          ModelConfig, ParallelConfig, SchedulerConfig,
@@ -28,6 +29,9 @@ from vllm.sampling_params import SamplingParams
 from vllm.sequence import MeowSamplerOutput, SamplerOutput, SequenceData, SequenceGroupMetadata
 from vllm.utils import (CudaMemoryProfiler, get_kv_cache_torch_dtype, is_hip,
                         is_pin_memory_available, make_tensor_with_pad)
+from vllm.meow_stats import MeowStats
+
+meow_stats = MeowStats()
 
 logger = init_logger(__name__)
 
@@ -743,30 +747,26 @@ class ModelRunner:
                 multi_modal_kwargs)
     
     def copy_cached_blocks(self, kv_caches, loaded_cache, computed_block_nums):
-        """
-        Copies blocks from a loaded cache into a pre-allocated kv_caches at specific positions.
+        start_time = datetime.now() 
 
-        Parameters:
-        kv_caches (list): A list of pre-allocated kv_caches for each layer.
-        seq_group_metadata_list (list): The loaded cache with specific blocks to be copied.
-        computed_block_nums (list): The block positions to copy the data into.
-        """
-        start_time = time.time()
+        # Ensure computed_block_nums is a tensor and on the same device as kv_caches
+        computed_block_nums = torch.tensor(computed_block_nums, device=kv_caches[0].device)
 
-        # Iterate over each layer
         for layer_idx in range(len(kv_caches)):
-            # kv_cache for the current layer
             kv_cache_layer = kv_caches[layer_idx]
-            loaded_cache_layer = loaded_cache[layer_idx]
+            device = kv_cache_layer.device  # Get device from kv_cache_layer
+            loaded_cache_layer = loaded_cache[layer_idx].to(device, non_blocking=True)  # Move to appropriate device
 
-            # Iterate over each block that needs to be copied
-            for i, block_num in enumerate(computed_block_nums):
-                kv_cache_layer[:, block_num, :, :, :] = loaded_cache_layer[:, i, :, :, :]
+            # Use advanced indexing to copy the blocks
+            kv_cache_layer.index_copy_(1, computed_block_nums, loaded_cache_layer[:, :len(computed_block_nums), :, :, :])
 
-        end_time = time.time()
-        print(f"copy_cached_blocks execution time: {end_time - start_time:.6f} seconds")
-
-
+        duration = (datetime.now() - start_time).total_seconds()  # Calculate the duration
+        
+         #todo: add stats per MB \ per loaded block
+        meow_stats.add_operation_duration("copy_loaded_cache_to_gpu_blocks", duration) 
+        
+        print(f"copy_loaded_cache_to_gpu_blocks execution time: {duration} seconds. exact_time: {datetime.now().strftime('%Y-%m-%d %H:%M:%S.%f')[:-3]}")      
+        
     def _prefill(
         self,
         seq_group_metadata_list: Optional[List[SequenceGroupMetadata]],
@@ -1147,6 +1147,7 @@ class CUDAGraphRunner:
         attn_metadata: AttentionMetadata,
         **kwargs,
     ) -> torch.Tensor:
+         
         # KV caches are fixed tensors, so we don't need to copy them.
         del kv_caches
 

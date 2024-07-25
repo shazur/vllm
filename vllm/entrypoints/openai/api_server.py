@@ -5,6 +5,7 @@ import re
 from contextlib import asynccontextmanager
 from http import HTTPStatus
 from typing import Optional, Set
+from datetime import datetime
 
 import fastapi
 import uvicorn
@@ -32,6 +33,10 @@ from vllm.entrypoints.openai.persistent_kv_cache import (OptimizedCompletionRequ
 from vllm.entrypoints.openai.serving_embedding import OpenAIServingEmbedding
 from vllm.logger import init_logger
 from vllm.usage.usage_lib import UsageContext
+
+from vllm.meow_stats import MeowStats
+
+meow_stats = MeowStats()
 
 TIMEOUT_KEEP_ALIVE = 5  # seconds
 
@@ -104,8 +109,12 @@ async def show_version():
 @app.post("/v1/chat/completions")
 async def create_chat_completion(request: ChatCompletionRequest,
                                  raw_request: Request):
+    start_time = datetime.now() 
     generator = await openai_serving_chat.create_chat_completion(
         request, raw_request)
+
+    duration = (datetime.now() - start_time).total_seconds()  # Calculate the duration
+    meow_stats.add_operation_duration("/v1/chat/completions", duration)
     if isinstance(generator, ErrorResponse):
         return JSONResponse(content=generator.model_dump(),
                             status_code=generator.code)
@@ -117,20 +126,25 @@ async def create_chat_completion(request: ChatCompletionRequest,
         return JSONResponse(content=generator.model_dump())
 
 @app.post("/v1/chat/opt_completions")
-async def create_chat_opt_completion(request: OptimizedCompletionRequest,
-                                 raw_request: Request):
-    generator = await persistent_kv_cache.create_chat_opt_completion(
-        request)
+async def create_chat_opt_completion(request: OptimizedCompletionRequest, raw_request: Request):
+    
+    logger.info(f"create_chat_opt_completion: starting exact_time: {datetime.now().strftime('%Y-%m-%d %H:%M:%S.%f')[:-3]}")
+
+    start_time = datetime.now()  # Capture the start time
+    generator = await persistent_kv_cache.create_chat_opt_completion(request)
+    end_time = datetime.now()  # Capture the end time
+
+    duration = (end_time - start_time).total_seconds()  # Calculate the duration in seconds
+    meow_stats.add_operation_duration("/v1/chat/opt_completions", duration)
+    logger.info(f"Opt_completions duration: {duration} seconds. exact_time: {datetime.now().strftime('%Y-%m-%d %H:%M:%S.%f')[:-3]}")  
+
     if isinstance(generator, ErrorResponse):
-        return JSONResponse(content=generator.model_dump(),
-                            status_code=generator.code)
+        return JSONResponse(content=generator.model_dump(), status_code=generator.code)
     if request.stream:
-        return StreamingResponse(content=generator,
-                                 media_type="text/event-stream")
+        return StreamingResponse(content=generator, media_type="text/event-stream")
     else:
         assert isinstance(generator, ChatCompletionResponse)
         return JSONResponse(content=generator.model_dump())
-    
 #this is our endpoint    
 @app.post("/index")
 async def index_context(request: IndexContextRequest, raw_request: Request):
@@ -139,17 +153,22 @@ async def index_context(request: IndexContextRequest, raw_request: Request):
 
 @app.post("/v1/completions")
 async def create_completion(request: CompletionRequest, raw_request: Request):
-    generator = await openai_serving_completion.create_completion(
-        request, raw_request)
+    start_time = datetime.now() 
+
+    generator = await openai_serving_completion.create_completion(request, raw_request)
+
+    end_time = datetime.now() 
+    duration = (end_time - start_time).total_seconds() 
+    meow_stats.add_operation_duration("/v1/completions", duration)
+    logger.info(f"Request duration for /v1/completions: {duration} seconds") 
+
     if isinstance(generator, ErrorResponse):
-        return JSONResponse(content=generator.model_dump(),
-                            status_code=generator.code)
+        return JSONResponse(content=generator.model_dump(), status_code=generator.code)
     if request.stream:
-        return StreamingResponse(content=generator,
-                                 media_type="text/event-stream")
+        return StreamingResponse(content=generator, media_type="text/event-stream")
     else:
         return JSONResponse(content=generator.model_dump())
-
+    
 
 @app.post("/v1/embeddings")
 async def create_embedding(request: EmbeddingRequest, raw_request: Request):

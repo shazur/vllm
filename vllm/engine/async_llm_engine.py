@@ -6,6 +6,8 @@ from typing import (AsyncIterator, Callable, Dict, Iterable, List, Optional,
 
 from transformers import PreTrainedTokenizer
 
+from datetime import datetime
+
 import vllm.envs as envs
 from vllm.config import DecodingConfig, ModelConfig
 from vllm.core.scheduler import SchedulerOutputs
@@ -20,6 +22,11 @@ from vllm.pooling_params import PoolingParams
 from vllm.sampling_params import SamplingParams
 from vllm.sequence import ExecuteModelRequest, SamplerOutput
 from vllm.usage.usage_lib import UsageContext
+
+from vllm.meow_stats import MeowStats
+
+meow_stats = MeowStats()
+
 
 logger = init_logger(__name__)
 ENGINE_ITERATION_TIMEOUT_S = envs.VLLM_ENGINE_ITERATION_TIMEOUT_S
@@ -220,9 +227,17 @@ class _AsyncLLMEngine(LLMEngine):
         and updates the scheduler with the model outputs. Finally, it decodes
         the sequences and returns the newly generated results.
         """
+        start_time = datetime.now() 
+
         seq_group_metadata_list, scheduler_outputs = self.scheduler.schedule()
+        isPrompt = None
+        is_opt_from_index_request = False
 
         if not scheduler_outputs.is_empty():
+            index_id=list(seq_group_metadata_list[0].seq_data.values())[0].get_index_id()
+            should_persist=list(seq_group_metadata_list[0].seq_data.values())[0].should_persist()
+            if (index_id and not should_persist):
+              is_opt_from_index_request = True
             # Execute the model.
             execute_model_req = ExecuteModelRequest(
                 seq_group_metadata_list=seq_group_metadata_list,
@@ -231,8 +246,9 @@ class _AsyncLLMEngine(LLMEngine):
                 blocks_to_copy=scheduler_outputs.blocks_to_copy,
                 num_lookahead_slots=scheduler_outputs.num_lookahead_slots,
                 running_queue_size=scheduler_outputs.running_queue_size,
-                index_id=list(seq_group_metadata_list[0].seq_data.values())[0].get_index_id()
+                index_id=index_id
             )
+            isPrompt=seq_group_metadata_list[0].is_prompt
             output = await self.model_executor.execute_model_async(
                 execute_model_req)
         else:
@@ -253,6 +269,21 @@ class _AsyncLLMEngine(LLMEngine):
             # queued control plane messages, such as add/remove lora adapters.
             await self.model_executor.stop_remote_worker_execution_loop_async()
 
+
+        end_time = datetime.now() 
+
+        duration = (end_time - start_time).total_seconds() 
+        
+        if (len(output) > 0):  
+          number_of_input_tokens = len(output[0].input_tokens)
+          number_of_computed_tokens = list(seq_group_metadata_list[0].seq_data.values())[0]._num_computed_tokens
+          meow_stats.add_timing(
+              duration=duration, 
+              number_of_input_tokens=number_of_input_tokens, 
+              is_opt_from_index_request=is_opt_from_index_request, 
+              is_prompt_phase=isPrompt, 
+              number_of_computed_tokens=number_of_computed_tokens)
+          
         return request_outputs
 
     async def process_model_inputs_async(
