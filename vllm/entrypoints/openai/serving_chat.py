@@ -247,7 +247,7 @@ class OpenAIServingChat(OpenAIServing):
             pad_prompt_to_block_size = request.should_index #pad request so that the input will be exactly "block_size" when indexed
             
             if is_query_indexed_data_request:
-              cached_request_dict = PersistentKVCacheDict.load_from_disk("persistent_kv_cache.pt").getKvCaches()
+              cached_request_dict = PersistentKVCacheDict.load_from_disk(request.index_id + ".pt").getKvCaches()
           
               if request.index_id in cached_request_dict:
                   cached_request_metadata = cached_request_dict[request.index_id]

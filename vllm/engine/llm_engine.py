@@ -715,7 +715,7 @@ class LLMEngine:
                 blocks = list(seq_group_metadata.block_tables.values())[0]  
                 persistent_kv_caches = PersistentKVCacheDict(index_id, o.kv_caches, blocks, seq_group_metadata.prompt, seq_data._num_computed_tokens)
                 #write kv_caches to disk - TODO: should be async
-                torch.save(persistent_kv_caches.getKvCaches(), "persistent_kv_cache.pt")  #todo: filename should be index_id
+                torch.save(persistent_kv_caches.getKvCaches(), index_id + ".pt")  #todo: filename should be index_id
                 print("meow request finished!!!")
 
         # Free the finished sequence groups.
