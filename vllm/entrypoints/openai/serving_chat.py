@@ -148,14 +148,14 @@ class OpenAIServingChat(OpenAIServing):
               if request.index_id in cached_request_dict:
                   cached_request_metadata = cached_request_dict[request.index_id]
                 
-
-            # Tokenize/detokenize depending on prompt format (string/token list)
-            prompt_ids, prompt_text,indexed_prompt_ids = self._validate_prompt_and_tokenize(
-                request,
-                prompt=prompt,
-                add_special_tokens=request.add_special_tokens,
-                cached_request_metadata=cached_request_metadata,
-                pad_prompt_to_block_size=pad_prompt_to_block_size)
+            # meow todo
+            # # Tokenize/detokenize depending on prompt format (string/token list)
+            # prompt_ids, prompt_text,indexed_prompt_ids = self._validate_prompt_and_tokenize(
+            #     request,
+            #     prompt=prompt,
+            #     add_special_tokens=request.add_special_tokens,
+            #     cached_request_metadata=cached_request_metadata,
+            #     pad_prompt_to_block_size=pad_prompt_to_block_size)
   
             sampling_params = request.to_sampling_params()
             decoding_config = await self.engine.get_decoding_config()
@@ -211,35 +211,46 @@ class OpenAIServingChat(OpenAIServing):
             # TODO: Use a vllm-specific Validation Error
             return self.create_error_response(str(e))
 
-        if indexed_prompt_ids is not None and len(indexed_prompt_ids) > 0:
-            indexed_prompt = cached_request_metadata["prompt"]
-            inputs: PromptInputs = {
-              "prompt": indexed_prompt + prompt_text,
-              "prompt_token_ids": indexed_prompt_ids[:-1] + prompt_ids + indexed_prompt_ids[-1:],
-              "indexed_prompt": indexed_prompt,
-              "indexed_prompt_ids": indexed_prompt_ids,
-              "new_prompt": prompt_text,
-              "new_prompt_token_ids": prompt_ids,
-              "indexed_kv_cache": cached_request_metadata["data"],
-              "num_of_computed_tokens": cached_request_metadata["num_of_computed_tokens"]
-          }
-        else:
-          inputs: PromptInputs = {
-              "prompt": prompt_text,
-              "prompt_token_ids": prompt_ids
-          }
-        if image_data is not None:
-            inputs["multi_modal_data"] = image_data
+        # if indexed_prompt_ids is not None and len(indexed_prompt_ids) > 0:
+        #     indexed_prompt = cached_request_metadata["prompt"]
+        #     inputs: PromptInputs = {
+        #       "prompt": indexed_prompt + prompt_text,
+        #       "prompt_token_ids": indexed_prompt_ids[:-1] + prompt_ids + indexed_prompt_ids[-1:],
+        #       "indexed_prompt": indexed_prompt,
+        #       "indexed_prompt_ids": indexed_prompt_ids,
+        #       "new_prompt": prompt_text,
+        #       "new_prompt_token_ids": prompt_ids,
+        #       "indexed_kv_cache": cached_request_metadata["data"],
+        #       "num_of_computed_tokens": cached_request_metadata["num_of_computed_tokens"]
+        #   }
+        # else:
+        #   inputs: PromptInputs = {
+        #       "prompt": prompt_text,
+        #       "prompt_token_ids": prompt_ids
+        #   }
+        # if image_data is not None:
+        #     inputs["multi_modal_data"] = image_data
             
-
+        #todo meow- pass index_id\should_index in some manner.
         result_generator = self.engine.generate(
-            inputs,
-            sampling_params,
-            request_id,
-            lora_request,
-            index_id = request.index_id,
-            should_index = request.should_index
-        )
+                engine_inputs,
+                sampling_params,
+                request_id,
+                lora_request=lora_request,
+                trace_headers=trace_headers,
+                prompt_adapter_request=prompt_adapter_request,
+                index_id = request.index_id,
+                should_index = request.should_index
+            )
+        
+        # result_generator = self.engine.generate(
+        #     engine_inputs,
+        #     sampling_params,
+        #     request_id,
+        #     lora_request,
+        #     index_id = request.index_id,
+        #     should_index = request.should_index
+        # )
         # Streaming response
         if request.stream:
             return self.chat_completion_stream_generator(

@@ -2,6 +2,8 @@ from typing import (Optional, List)
 from urllib.request import Request
 import uuid
 from pydantic import BaseModel
+from vllm.entrypoints.logger import RequestLogger
+from vllm.entrypoints.openai.serving_engine import PromptAdapterPath
 from vllm.config import ModelConfig
 from vllm.engine.async_llm_engine import AsyncLLMEngine
 from vllm.entrypoints.openai.protocol import ChatCompletionRequest, CompletionRequest
@@ -18,11 +20,31 @@ class OptimizedCompletionRequest(ChatCompletionRequest):
     index_id: str
 
 class PersistentKvCache():
-    def __init__(self, engine: AsyncLLMEngine, model_config: ModelConfig,
-                 served_model_names: List[str],
-                 lora_modules: Optional[List[LoRAModulePath]]) -> None:
-        self.openai_serving_chat = OpenAIServingChat(engine, model_config, served_model_names, 'user', lora_modules)
-        pass
+    def __init__(
+        self,
+        engine: AsyncLLMEngine,
+        model_config: ModelConfig,
+        served_model_names: List[str],
+        response_role: str,
+        *,
+        lora_modules: Optional[List[LoRAModulePath]],
+        prompt_adapters: Optional[List[PromptAdapterPath]],
+        request_logger: Optional[RequestLogger],
+        chat_template: Optional[str],
+        return_tokens_as_token_ids: bool = False,
+    ):
+      self.openai_serving_chat = OpenAIServingChat(
+        engine,
+        model_config,
+        served_model_names,
+        'user',
+        lora_modules=lora_modules,
+        prompt_adapters=prompt_adapters,
+        request_logger=request_logger,
+        chat_template=chat_template,
+        return_tokens_as_token_ids=return_tokens_as_token_ids,
+    )
+      pass
 
     async def populate(self, request: IndexContextRequest): 
         index_id = self._generate_index_id() #hash? 

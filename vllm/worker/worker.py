@@ -247,26 +247,10 @@ class Worker(LocalOrDistributedWorkerBase):
         return self.gpu_cache
 
     @torch.inference_mode()
-
-    def execute_model(
-        self,
-        execute_model_req: Optional[ExecuteModelRequest] = None
-    ) -> List[Union[SamplerOutput, PoolerOutput]]:
-        if not self.is_driver_worker:
-            self._execute_model_non_driver(execute_model_req.index_id)
-            return []
-
-        if execute_model_req is None:
-            # This signals that there's no more requests to process for now.
-            # All workers are running infinite loop with broadcast_tensor_dict,
-            # and it stops the loop when the driver broadcasts an empty input.
-            # Send an empty input to notify all other workers to stop their
-            # execution loop.
-            broadcast_tensor_dict({}, src=0)
-            return []
-
-        seq_group_metadata_list = execute_model_req.seq_group_metadata_list
-        num_seq_groups = len(seq_group_metadata_list)
+    def prepare_worker_input(
+            self, execute_model_req: ExecuteModelRequest) -> WorkerInput:
+        virtual_engine = execute_model_req.virtual_engine
+        num_seq_groups = len(execute_model_req.seq_group_metadata_list)
         # `blocks_to_swap_in` and `blocks_to_swap_out` are cpu tensors.
         # they contain parameters to launch cudamemcpyasync.
         blocks_to_swap_in = torch.tensor(execute_model_req.blocks_to_swap_in,
@@ -291,7 +275,7 @@ class Worker(LocalOrDistributedWorkerBase):
         )
 
     @torch.inference_mode()
-    def execute_worker(self, worker_input: WorkerInput) -> None:
+    def execute_worker(self, worker_input: WorkerInput) -> None: #todo meow- pass indexId
         virtual_engine = worker_input.virtual_engine
         # Issue cache operations.
         if (worker_input.blocks_to_swap_in is not None
@@ -305,51 +289,6 @@ class Worker(LocalOrDistributedWorkerBase):
         if (worker_input.blocks_to_copy is not None
                 and worker_input.blocks_to_copy.numel() > 0):
             self.cache_engine[virtual_engine].copy(worker_input.blocks_to_copy)
-        self.cache_swap(blocks_to_swap_in, blocks_to_swap_out, blocks_to_copy)
-
-        # If there is no input, we don't need to execute the model.
-        if num_seq_groups == 0:
-            return []
-
-        output = self.model_runner.execute_model(seq_group_metadata_list,
-                                                 self.gpu_cache, execute_model_req.index_id)
-
-        # Worker only supports single-step execution. Wrap the output in a list
-        # to conform to interface.
-        return [output]
-
-    @torch.inference_mode()
-    def start_worker_execution_loop(self) -> None:
-        """Execute model loop in parallel worker.
-
-        You can stop the loop by executing a driver worker with an empty output.
-        See `stop_remote_worker_execution_loop` for more details.
-        """
-        while self._execute_model_non_driver():
-            pass
-
-    def _execute_model_non_driver(self, index_id = Optional[str]) -> bool:
-        """Execute model in parallel worker.
-
-        Returns True iff there are remaining sequences to process.
-        """
-        assert not self.is_driver_worker
-        data = broadcast_tensor_dict(src=0)
-        if not data:
-            return False
-
-        num_seq_groups = data.get("num_seq_groups", 0)
-        blocks_to_swap_in = data.get("blocks_to_swap_in")
-        blocks_to_swap_out = data.get("blocks_to_swap_out")
-        blocks_to_copy = data.get("blocks_to_copy")
-        self.cache_swap(blocks_to_swap_in, blocks_to_swap_out, blocks_to_copy)
-
-        # If there is no input, we don't need to execute the model.
-        if num_seq_groups == 0:
-            return False
-
-        self.model_runner.execute_model(None, self.gpu_cache, index_id)
-        return True
 
     def add_lora(self, lora_request: LoRARequest) -> bool:
         return self.model_runner.add_lora(lora_request)

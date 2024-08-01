@@ -289,7 +289,8 @@ class _AsyncLLMEngine(LLMEngine):
         duration = (end_time - start_time).total_seconds() 
         
         if (len(output) > 0):  
-          number_of_input_tokens = len(output[0].input_tokens)
+          #todo meow - check if number_of_input_tokens is correct in an indexed request as well compared to old machine.
+          number_of_input_tokens = len(list(seq_group_metadata_list[0].seq_data.values())[0].prompt_token_ids)
           number_of_computed_tokens = list(seq_group_metadata_list[0].seq_data.values())[0]._num_computed_tokens
           meow_stats.add_timing(
               duration=duration, 

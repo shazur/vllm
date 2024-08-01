@@ -328,11 +328,12 @@ class OpenAIServing:
                     f"Please reduce the length of the messages.")
             request.max_tokens = self.max_model_len - token_num
 
-        indexed_prompt_ids = None #meow tokenize cached input
-        if (cached_request_metadata is not None):
+        # meow todo - pad the input somewhere
+        # indexed_prompt_ids = None #meow tokenize cached input
+        # if (cached_request_metadata is not None):
             
-            indexed_prompt_ids = self.tokenizer(cached_request_metadata["prompt"], **tokenizer_kwargs).input_ids
-            indexed_prompt_ids = self.pad_prompt_to_fit_block_size(indexed_prompt_ids) 
+        #     indexed_prompt_ids = self.tokenizer(cached_request_metadata["prompt"], **tokenizer_kwargs).input_ids
+        #     indexed_prompt_ids = self.pad_prompt_to_fit_block_size(indexed_prompt_ids) 
 
         if token_num + request.max_tokens > self.max_model_len:
             raise ValueError(

@@ -837,19 +837,20 @@ class LLMEngine:
                 self.output_processor.process_outputs(seq_group, outputs)
             if (seq_group is not None and seq_group.is_finished()):
               logger.info(f"_process_model_outputs: request finished exact_time: {datetime.now().strftime('%Y-%m-%d %H:%M:%S.%f')[:-3]}")
-              o = output[0]
-              seq_group_metadata = o.seq_group_metadata_list[0]
-              seq_data = list(seq_group_metadata.seq_data.values())[0]
+              seq_data = list(seq_group_meta.seq_data.values())[0]
               index_id = seq_data.get_index_id()
               should_persist = seq_data.should_persist()
 
-              if should_persist and index_id is not None:         
-                #get relevant blocks to save
-                blocks = list(seq_group_metadata.block_tables.values())[0]  
-                persistent_kv_caches = PersistentKVCacheDict(index_id, o.kv_caches, blocks, seq_group_metadata.prompt, seq_data._num_computed_tokens)
-                #write kv_caches to disk - TODO: should be async
-                torch.save(persistent_kv_caches.getKvCaches(), index_id + ".pt")  #todo: filename should be index_id
-                print("meow request finished!!!")
+
+              # todo meow need to get kv_caches. 
+              # if should_persist and index_id is not None:         
+              #   #get relevant blocks to save
+              #   blocks = list(seq_group_meta.block_tables.values())[0]  
+                
+              #   persistent_kv_caches = PersistentKVCacheDict(index_id, o.kv_caches, blocks, seq_group_meta.prompt, seq_data._num_computed_tokens)
+              #   #write kv_caches to disk - TODO: should be async
+              #   torch.save(persistent_kv_caches.getKvCaches(), index_id + ".pt")  #todo: filename should be index_id
+              #   print("meow request finished!!!")
 
         # Free the finished sequence groups.
         for scheduler in self.scheduler:

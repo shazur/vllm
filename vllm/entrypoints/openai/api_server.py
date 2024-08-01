@@ -44,7 +44,7 @@ from vllm.logger import init_logger
 from vllm.server import serve_http
 from vllm.usage.usage_lib import UsageContext
 from vllm.utils import FlexibleArgumentParser
-
+from vllm.version import version as VLLM_VERSION
 from vllm.meow_stats import MeowStats
 
 meow_stats = MeowStats()
@@ -306,8 +306,16 @@ async def init_app(args: Namespace,
         request_logger=request_logger,
         return_tokens_as_token_ids=args.return_tokens_as_token_ids,
     )
-    persistent_kv_cache = PersistentKvCache(
-        engine, model_config, served_model_names, args.lora_modules
+    persistent_kv_cache = PersistentKvCache( #meow todo- why this not in use
+        engine,
+        model_config,
+        served_model_names,
+        args.response_role,
+        lora_modules=args.lora_modules,
+        prompt_adapters=args.prompt_adapters,
+        request_logger=request_logger,
+        chat_template=args.chat_template,
+        return_tokens_as_token_ids=args.return_tokens_as_token_ids,
     )
     openai_serving_embedding = OpenAIServingEmbedding(
         engine,

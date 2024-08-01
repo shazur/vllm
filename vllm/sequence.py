@@ -123,7 +123,7 @@ class SequenceData:
         output_token_ids: Optional[List[int]] = None,
         index_id: Optional[str] = None,
         should_index: bool = False,
-        inputs: Optional[LLMInputs] = None,
+        inputs: Optional["LLMInputs"] = None,
         cache_already_copied: bool = False
     ) -> None:
         self._prompt_token_ids = array('l', prompt_token_ids)
