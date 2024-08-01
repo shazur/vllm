@@ -1,6 +1,7 @@
 from typing import (Optional, List)
 from urllib.request import Request
 import uuid
+from entrypoints.openai.protocol import ErrorResponse
 from pydantic import BaseModel
 from vllm.entrypoints.logger import RequestLogger
 from vllm.entrypoints.openai.serving_engine import PromptAdapterPath
@@ -46,7 +47,7 @@ class PersistentKvCache():
     )
       pass
 
-    async def populate(self, request: IndexContextRequest): 
+    async def populate(self, request: IndexContextRequest) -> Optional[str]: 
         index_id = self._generate_index_id() #hash? 
         messages = [ChatCompletionUserMessageParam(role="user", content=request.content)]
         output = await self.openai_serving_chat.create_chat_completion(ChatCompletionRequest(
@@ -56,6 +57,8 @@ class PersistentKvCache():
             model = request.model,
             max_tokens=1)
         )
+        if isinstance(output, ErrorResponse)
+            return None
         # print("result is:" + output.usage.completion_tokens)
         return index_id
     
