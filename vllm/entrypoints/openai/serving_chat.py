@@ -231,7 +231,6 @@ class OpenAIServingChat(OpenAIServing):
         # if image_data is not None:
         #     inputs["multi_modal_data"] = image_data
             
-        #todo meow- pass index_id\should_index in some manner.
         result_generator = self.engine.generate(
                 engine_inputs,
                 sampling_params,
@@ -243,15 +242,6 @@ class OpenAIServingChat(OpenAIServing):
                 should_index = request.should_index
             )
         
-        # result_generator = self.engine.generate(
-        #     engine_inputs,
-        #     sampling_params,
-        #     request_id,
-        #     lora_request,
-        #     index_id = request.index_id,
-        #     should_index = request.should_index
-        # )
-        # Streaming response
         if request.stream:
             return self.chat_completion_stream_generator(
                 request, result_generator, request_id, conversation, tokenizer)

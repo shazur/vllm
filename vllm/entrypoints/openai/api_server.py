@@ -44,7 +44,7 @@ from vllm.logger import init_logger
 from vllm.server import serve_http
 from vllm.usage.usage_lib import UsageContext
 from vllm.utils import FlexibleArgumentParser
-from vllm.version import version as VLLM_VERSION
+from vllm.version import __version__ as VLLM_VERSION
 from vllm.meow_stats import MeowStats
 
 meow_stats = MeowStats()
@@ -288,6 +288,7 @@ async def init_app(args: Namespace,
     global openai_serving_completion
     global openai_serving_embedding
     global openai_serving_tokenization
+    global persistent_kv_cache
 
     openai_serving_chat = OpenAIServingChat(
         engine,
