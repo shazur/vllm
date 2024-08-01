@@ -1,7 +1,7 @@
 from typing import (Optional, List)
 from urllib.request import Request
 import uuid
-from entrypoints.openai.protocol import ErrorResponse
+from vllm.entrypoints.openai.protocol import ErrorResponse
 from pydantic import BaseModel
 from vllm.entrypoints.logger import RequestLogger
 from vllm.entrypoints.openai.serving_engine import PromptAdapterPath
@@ -57,7 +57,7 @@ class PersistentKvCache():
             model = request.model,
             max_tokens=1)
         )
-        if isinstance(output, ErrorResponse)
+        if isinstance(output, ErrorResponse):
             return None
         # print("result is:" + output.usage.completion_tokens)
         return index_id

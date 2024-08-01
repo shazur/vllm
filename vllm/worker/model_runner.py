@@ -47,7 +47,7 @@ from vllm.prompt_adapter.request import PromptAdapterRequest
 from vllm.prompt_adapter.worker_manager import (
     LRUCacheWorkerPromptAdapterManager)
 from vllm.sampling_params import SamplingParams
-from vllm.sequence import (IntermediateTensors, SamplerOutput,
+from vllm.sequence import (IntermediateTensors, SamplerOutput,MeowSamplerOutput,
                            SequenceGroupMetadata)
 from vllm.utils import (CudaMemoryProfiler, flatten_2d_lists,
                         get_kv_cache_torch_dtype, is_hip,
@@ -1371,9 +1371,13 @@ class ModelRunner(GPUModelRunnerBase[ModelInputForGPUWithSamplingMetadata]):
             return []
 
         # Sample the next token.
-        output: SamplerOutput = self.model.sample(
+        out: SamplerOutput = self.model.sample(
             logits=logits,
-            sampling_metadata=model_input.sampling_metadata,
+            sampling_metadata=model_input.sampling_metadata
+        )
+        output = MeowSamplerOutput(
+          existing_sampler_output=out,
+          kv_caches=kv_caches
         )
 
         if self.return_hidden_states:

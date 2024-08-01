@@ -962,21 +962,10 @@ class SamplerOutput:
 
 class MeowSamplerOutput(SamplerOutput):
     kv_caches: Optional[List[torch.Tensor]] = None
-    seq_group_metadata_list: Optional[List["SequenceGroupMetadata"]] = None
-    sampling_metadata: Optional["SamplingMetadata"] = None
-    attn_metadata: Optional["AttentionMetadata"] = None
-    input_tokens: Optional[torch.Tensor] = None
-    input_positions: Optional[torch.Tensor] = None
-    index_id: Optional[str] = None
 
     def __init__(self, existing_sampler_output: SamplerOutput, 
-                 kv_caches: Optional[List[torch.Tensor]] = None,
-                 seq_group_metadata_list: Optional[List["SequenceGroupMetadata"]] = None,
-                 sampling_metadata: Optional["SamplingMetadata"] = None,
-                 attn_metadata: Optional["AttentionMetadata"] = None,
-                 input_tokens: Optional[torch.Tensor] = None,
-                 input_positions: Optional[torch.Tensor] = None,
-                 index_id: Optional[str] = None):
+                 kv_caches: Optional[List[torch.Tensor]] = None):
+              
         super().__init__(
             outputs=existing_sampler_output.outputs,
             sampled_token_probs=existing_sampler_output.sampled_token_probs,
@@ -985,35 +974,8 @@ class MeowSamplerOutput(SamplerOutput):
             spec_decode_worker_metrics=existing_sampler_output.spec_decode_worker_metrics
         )
         self.kv_caches = kv_caches
-        self.seq_group_metadata_list = seq_group_metadata_list
-        self.sampling_metadata = sampling_metadata
-        self.attn_metadata = attn_metadata
-        self.input_tokens = input_tokens
-        self.input_positions = input_positions
-        self.index_id = index_id
+    
 
-    def __repr__(self) -> str:
-        sampled_token_probs_repr = ("None" if self.sampled_token_probs is None
-                                    else self.sampled_token_probs.shape)
-        sampled_token_ids_repr = ("None" if self.sampled_token_ids is None else
-                                  self.sampled_token_ids.shape)
-        kv_caches_repr = ("None" if self.kv_caches is None else
-                          [cache.shape for cache in self.kv_caches])
-        input_tokens_repr = ("None" if self.input_tokens is None else
-                             self.input_tokens.shape)
-        input_positions_repr = ("None" if self.input_positions is None else
-                                self.input_positions.shape)
-        return (f"MeowSamplerOutput(outputs={self.outputs}, "
-                f"sampled_token_probs={sampled_token_probs_repr}, "
-                f"sampled_token_ids={sampled_token_ids_repr}, "
-                f"spec_decode_worker_metrics={self.spec_decode_worker_metrics}, "
-                f"kv_caches={kv_caches_repr}, "
-                f"seq_group_metadata_list={self.seq_group_metadata_list}, "
-                f"sampling_metadata={self.sampling_metadata}, "
-                f"attn_metadata={self.attn_metadata}, "
-                f"input_tokens={input_tokens_repr}, "
-                f"input_positions={input_positions_repr}, "
-                f"index_id={self.index_id})")
 
 @dataclass
 class PoolerOutput:

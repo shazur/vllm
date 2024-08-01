@@ -836,21 +836,7 @@ class LLMEngine:
             if seq_group_meta.do_sample:
                 self.output_processor.process_outputs(seq_group, outputs)
             if (seq_group is not None and seq_group.is_finished()):
-              logger.info(f"_process_model_outputs: request finished exact_time: {datetime.now().strftime('%Y-%m-%d %H:%M:%S.%f')[:-3]}")
-              seq_data = list(seq_group_meta.seq_data.values())[0]
-              index_id = seq_data.get_index_id()
-              should_persist = seq_data.should_persist()
-
-
-              # todo meow need to get kv_caches. 
-              # if should_persist and index_id is not None:         
-              #   #get relevant blocks to save
-              #   blocks = list(seq_group_meta.block_tables.values())[0]  
-                
-              #   persistent_kv_caches = PersistentKVCacheDict(index_id, o.kv_caches, blocks, seq_group_meta.prompt, seq_data._num_computed_tokens)
-              #   #write kv_caches to disk - TODO: should be async
-              #   torch.save(persistent_kv_caches.getKvCaches(), index_id + ".pt")  #todo: filename should be index_id
-              #   print("meow request finished!!!")
+              self._meow_handle_persisting_cache(seq_group_meta,output[0])
 
         # Free the finished sequence groups.
         for scheduler in self.scheduler:
@@ -868,6 +854,21 @@ class LLMEngine:
             request_output = RequestOutputFactory.create(seq_group)
             request_outputs.append(request_output)
         return request_outputs
+
+    def _meow_handle_persisting_cache(self, seq_group_meta,output: MeowSamplerOutput):
+        logger.info(f"_process_model_outputs: request finished exact_time: {datetime.now().strftime('%Y-%m-%d %H:%M:%S.%f')[:-3]}")
+        seq_data = list(seq_group_meta.seq_data.values())[0]
+        index_id = seq_data.get_index_id()
+        should_persist = seq_data.should_persist()
+
+        if should_persist and index_id is not None:         
+          #get relevant blocks to save
+          blocks = list(seq_group_meta.block_tables.values())[0]  
+          
+          persistent_kv_caches = PersistentKVCacheDict(index_id, output.kv_caches, blocks, seq_group_meta.prompt, seq_data._num_computed_tokens)
+          #write kv_caches to disk - TODO: should be async
+          torch.save(persistent_kv_caches.getKvCaches(), index_id + ".pt")  #todo: filename should be index_id
+          print("meow request finished!!!")
 
     def step(self) -> List[Union[RequestOutput, EmbeddingRequestOutput]]:
         """Performs one decoding iteration and returns newly generated results.

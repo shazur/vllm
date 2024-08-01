@@ -270,7 +270,7 @@ class LocalOrDistributedWorkerBase(WorkerBase):
                 get_pp_group().recv_tensor_dict())
 
         output = self.model_runner.execute_model(
-            model_input, self.kv_cache[worker_input.virtual_engine]
+            model_input, self.kv_cache[worker_input.virtual_engine] 
             if self.kv_cache is not None else None, intermediate_tensors,
             num_steps)
 
