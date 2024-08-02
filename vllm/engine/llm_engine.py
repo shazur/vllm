@@ -8,6 +8,7 @@ import torch
 
 from transformers import PreTrainedTokenizer
 
+from vllm.inputs.data import MeowData
 import vllm.envs as envs
 import vllm
 from vllm.config import (CacheConfig, DecodingConfig, DeviceConfig,
@@ -536,8 +537,7 @@ class LLMEngine:
         lora_request: Optional[LoRARequest],
         prompt_adapter_request: Optional[PromptAdapterRequest],
         trace_headers: Optional[Mapping[str, str]] = None,
-        index_id: Optional[str] = None,
-        should_index: bool = False
+        meow_data: Optional[MeowData] = None,
     ) -> None:
         # Create the sequences.
         block_size = self.cache_config.block_size
@@ -545,7 +545,7 @@ class LLMEngine:
         eos_token_id = self._get_eos_token_id(lora_request)
 
         seq = Sequence(seq_id, processed_inputs, block_size, eos_token_id,
-                       lora_request, prompt_adapter_request, index_id, should_index)
+                       lora_request, prompt_adapter_request, meow_data)
 
         # Create a SequenceGroup based on SamplingParams or PoolingParams
         if isinstance(params, SamplingParams):
@@ -865,7 +865,7 @@ class LLMEngine:
           #get relevant blocks to save
           blocks = list(seq_group_meta.block_tables.values())[0]  
           
-          persistent_kv_caches = PersistentKVCacheDict(index_id, output.kv_caches, blocks, seq_group_meta.prompt, seq_data._num_computed_tokens)
+          persistent_kv_caches = PersistentKVCacheDict(index_id, output.kv_caches, blocks, seq_data.inputs['prompt_token_ids'])
           #write kv_caches to disk - TODO: should be async
           torch.save(persistent_kv_caches.getKvCaches(), index_id + ".pt")  #todo: filename should be index_id
           print("meow request finished!!!")
@@ -1303,10 +1303,9 @@ class KVCacheMetadata(TypedDict):
     prompt: str
 
 class PersistentKVCacheDict:
-    def __init__(self, index_id, kv_caches, blocks, prompt, num_of_computed_tokens):
+    def __init__(self, index_id, kv_caches, blocks, computed_token_ids):
         self.dict = {index_id: KVCacheMetadata({
-            "prompt": prompt, 
-            "num_of_computed_tokens":num_of_computed_tokens, 
+            "computed_token_ids": computed_token_ids,
             "data": self._select_blocks(kv_caches, blocks)}
             )}
     def getKvCaches(self):

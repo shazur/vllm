@@ -8,6 +8,7 @@ from transformers import PreTrainedTokenizer
 
 from datetime import datetime
 
+from vllm.inputs.data import MeowData
 import vllm.envs as envs
 from vllm.config import DecodingConfig, EngineConfig, ModelConfig
 from vllm.core.scheduler import SchedulerOutputs
@@ -355,8 +356,7 @@ class _AsyncLLMEngine(LLMEngine):
         lora_request: Optional[LoRARequest] = None,
         trace_headers: Optional[Mapping[str, str]] = None,
         prompt_adapter_request: Optional[PromptAdapterRequest] = None,
-        index_id: Optional[str] = None,
-        should_index: bool = False,
+        meow_data: Optional[MeowData] = None,
     ) -> None:
         if lora_request is not None and not self.lora_config:
             raise ValueError(f"Got lora_request {lora_request} but LoRA is "
@@ -378,8 +378,7 @@ class _AsyncLLMEngine(LLMEngine):
             lora_request=lora_request,
             prompt_adapter_request=prompt_adapter_request,
             trace_headers=trace_headers,
-            index_id=index_id,
-            should_index=should_index
+            meow_data=meow_data,
         )
 
     async def check_health_async(self) -> None:
@@ -714,8 +713,7 @@ class AsyncLLMEngine:
         lora_request: Optional[LoRARequest] = None,
         trace_headers: Optional[Mapping[str, str]] = None,
         prompt_adapter_request: Optional[PromptAdapterRequest] = None,
-        index_id: Optional[str] = None,
-        should_index: bool = False
+        meow_data: Optional[MeowData] = None,
     ) -> AsyncStream:
         if not self.is_running:
             if self.start_engine_loop:
@@ -739,8 +737,7 @@ class AsyncLLMEngine:
             lora_request=lora_request,
             trace_headers=trace_headers,
             prompt_adapter_request=prompt_adapter_request,
-            index_id=index_id,
-            should_index=should_index)
+            meow_data=meow_data)
 
         return stream
 
@@ -752,8 +749,7 @@ class AsyncLLMEngine:
         lora_request: Optional[LoRARequest] = None,
         trace_headers: Optional[Mapping[str, str]] = None,
         prompt_adapter_request: Optional[PromptAdapterRequest] = None,
-        index_id: Optional[str] = None,
-        should_index: bool = False
+        meow_data: Optional[MeowData] = None,
     ) -> AsyncIterator[RequestOutput]:
         """Generate outputs for a request.
 
@@ -826,8 +822,7 @@ class AsyncLLMEngine:
                 lora_request=lora_request,
                 trace_headers=trace_headers,
                 prompt_adapter_request=prompt_adapter_request,
-                index_id=index_id,
-                should_index=should_index
+                meow_data=meow_data,
         ):
             yield LLMEngine.validate_output(output, RequestOutput)
 
@@ -917,8 +912,7 @@ class AsyncLLMEngine:
         lora_request: Optional[LoRARequest] = None,
         trace_headers: Optional[Mapping[str, str]] = None,
         prompt_adapter_request: Optional[PromptAdapterRequest] = None,
-        index_id: Optional[str] = None,
-        should_index: bool = False
+        meow_data: Optional[MeowData] = None,
     ) -> AsyncIterator[Union[RequestOutput, EmbeddingRequestOutput]]:
         """Common logic to process requests with SamplingParams or
         PoolingParams."""
@@ -932,8 +926,7 @@ class AsyncLLMEngine:
             lora_request=lora_request,
             trace_headers=trace_headers,
             prompt_adapter_request=prompt_adapter_request,
-            index_id=index_id,
-            should_index=should_index
+            meow_data=meow_data,
         )
 
         try:

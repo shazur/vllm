@@ -1,3 +1,6 @@
+import torch # meow added this
+from dataclasses import dataclass, field # meow added this
+
 from typing import (TYPE_CHECKING, List, Literal, Optional, Sequence,
                     TypedDict, Union, cast, overload)
 
@@ -119,3 +122,11 @@ class LLMInputs(TypedDict):
     Optional multi-modal data to pass to the model,
     if the model supports it.
     """
+
+
+@dataclass
+class MeowData:
+    index_id: Optional[str] = field(default=None)
+    should_index: Optional[bool] = field(default=None)
+    indexed_kv_caches: Optional[List[torch.Tensor]] = field(default=None)
+    num_of_computed_tokens: Optional[int] = field(default=None)

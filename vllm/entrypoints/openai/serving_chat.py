@@ -1,6 +1,6 @@
 import time
 from typing import (AsyncGenerator, AsyncIterator, Awaitable, Dict, List,
-                    Optional)
+                    Optional, Tuple)
 from typing import Sequence as GenericSequence
 from typing import Union
 
@@ -25,6 +25,7 @@ from vllm.entrypoints.openai.protocol import (
 from vllm.entrypoints.openai.serving_engine import (LoRAModulePath,
                                                     OpenAIServing,
                                                     PromptAdapterPath)
+from vllm.inputs.data import MeowData
 from vllm.inputs import PromptInputs
 from vllm.logger import init_logger
 from vllm.model_executor.guided_decoding import (
@@ -136,27 +137,6 @@ class OpenAIServingChat(OpenAIServing):
 
         request_id = f"chat-{random_uuid()}"
         try:
-            # meow input things: load cache if requested , pad input to block size 
-            cached_request_metadata = None
-
-            is_query_indexed_data_request = request.index_id is not None and not request.should_index 
-            pad_prompt_to_block_size = request.should_index #pad request so that the input will be exactly "block_size" when indexed
-            
-            if is_query_indexed_data_request:
-              cached_request_dict = PersistentKVCacheDict.load_from_disk(request.index_id + ".pt").getKvCaches()
-          
-              if request.index_id in cached_request_dict:
-                  cached_request_metadata = cached_request_dict[request.index_id]
-                
-            # meow todo
-            # # Tokenize/detokenize depending on prompt format (string/token list)
-            # prompt_ids, prompt_text,indexed_prompt_ids = self._validate_prompt_and_tokenize(
-            #     request,
-            #     prompt=prompt,
-            #     add_special_tokens=request.add_special_tokens,
-            #     cached_request_metadata=cached_request_metadata,
-            #     pad_prompt_to_block_size=pad_prompt_to_block_size)
-  
             sampling_params = request.to_sampling_params()
             decoding_config = await self.engine.get_decoding_config()
             guided_decoding_backend = request.guided_decoding_backend \
@@ -185,6 +165,7 @@ class OpenAIServingChat(OpenAIServing):
                              lora_request=lora_request,
                              prompt_adapter_request=prompt_adapter_request)
 
+
             engine_inputs: PromptInputs = {
                 "prompt_token_ids": prompt_inputs["prompt_token_ids"],
             }
@@ -199,6 +180,10 @@ class OpenAIServingChat(OpenAIServing):
                     and contains_trace_headers(raw_request.headers)):
                 log_tracing_disabled_warning()
 
+            # meow change
+            engine_inputs, meow_data = await self.meow_engine_inputs_and_parameters_if_necessary(engine_inputs, request, tokenizer)
+            # end meow change
+
             result_generator = self.engine.generate(
                 engine_inputs,
                 sampling_params,
@@ -206,42 +191,12 @@ class OpenAIServingChat(OpenAIServing):
                 lora_request=lora_request,
                 trace_headers=trace_headers,
                 prompt_adapter_request=prompt_adapter_request,
+                meow_data = meow_data,
             )
         except ValueError as e:
             # TODO: Use a vllm-specific Validation Error
             return self.create_error_response(str(e))
 
-        # if indexed_prompt_ids is not None and len(indexed_prompt_ids) > 0:
-        #     indexed_prompt = cached_request_metadata["prompt"]
-        #     inputs: PromptInputs = {
-        #       "prompt": indexed_prompt + prompt_text,
-        #       "prompt_token_ids": indexed_prompt_ids[:-1] + prompt_ids + indexed_prompt_ids[-1:],
-        #       "indexed_prompt": indexed_prompt,
-        #       "indexed_prompt_ids": indexed_prompt_ids,
-        #       "new_prompt": prompt_text,
-        #       "new_prompt_token_ids": prompt_ids,
-        #       "indexed_kv_cache": cached_request_metadata["data"],
-        #       "num_of_computed_tokens": cached_request_metadata["num_of_computed_tokens"]
-        #   }
-        # else:
-        #   inputs: PromptInputs = {
-        #       "prompt": prompt_text,
-        #       "prompt_token_ids": prompt_ids
-        #   }
-        # if image_data is not None:
-        #     inputs["multi_modal_data"] = image_data
-            
-        result_generator = self.engine.generate(
-                engine_inputs,
-                sampling_params,
-                request_id,
-                lora_request=lora_request,
-                trace_headers=trace_headers,
-                prompt_adapter_request=prompt_adapter_request,
-                index_id = request.index_id,
-                should_index = request.should_index
-            )
-        
         if request.stream:
             return self.chat_completion_stream_generator(
                 request, result_generator, request_id, conversation, tokenizer)
@@ -253,6 +208,57 @@ class OpenAIServingChat(OpenAIServing):
             except ValueError as e:
                 # TODO: Use a vllm-specific Validation Error
                 return self.create_error_response(str(e))
+
+    
+    async def meow_engine_inputs_and_parameters_if_necessary(self, engine_inputs: PromptInputs, request: ChatCompletionRequest, tokenizer: PreTrainedTokenizer) -> Tuple[PromptInputs, MeowData]:
+      meow_data = MeowData()
+
+      meow_data.index_id = request.index_id
+      meow_data.should_index = request.should_index
+      
+      if request.should_index:  # 1. index request - add padding to prompt ids.
+          engine_inputs["prompt_token_ids"] = self.pad_prompt_ids_to_fit_block_size(
+              engine_inputs["prompt_token_ids"], 
+              tokenizer,
+              self.engine.engine.cache_config.block_size
+          )
+      elif request.index_id:  # 2. opt request 
+          assert len(request.messages) == 1  # we only support 1 message for opt requests
+          cached_request_dict = PersistentKVCacheDict.load_from_disk(f"{request.index_id}.pt").getKvCaches()
+          assert request.index_id in cached_request_dict 
+          cached_request_metadata = cached_request_dict[request.index_id]
+          computed_token_ids = cached_request_metadata['computed_token_ids']
+          
+          no_special_tokens_new_prompt_token_ids = tokenizer(
+              request.messages[0]['content'], 
+              add_special_tokens=False
+          ).input_ids
+          
+          # 2.1: add the new prompt ids aka "question" to the indexed promptids
+          engine_inputs["prompt_token_ids"] = computed_token_ids[:-1] + no_special_tokens_new_prompt_token_ids + computed_token_ids[-1:]
+          
+          # 2.2: add the loaded cache
+          meow_data.indexed_kv_caches = cached_request_metadata["data"]
+          
+          # 2.3: add the number of computed tokens
+          meow_data.num_of_computed_tokens = len(computed_token_ids)
+      
+      return engine_inputs, meow_data
+
+    def pad_prompt_ids_to_fit_block_size(self, prompt_ids, tokenizer: PreTrainedTokenizer, block_size: int):
+      # Identify the first non-special token, it will be a "space" token
+      space_token_id = tokenizer(' ', add_special_tokens=False).input_ids[0]
+      #special_tokens = [getattr(self.tokenizer, attr, None) for attr in self.tokenizer.SPECIAL_TOKENS_ATTRIBUTES]
+      #space_token_id = next(token_id for token_id in space_token_ids if token_id not in special_tokens)
+
+      # Calculate the number of space tokens needed
+      num_spaces_needed = (block_size - len(prompt_ids) % block_size) % block_size
+
+      # Insert the space tokens before the last element (which is assumed to be a special End of sequence token)
+      prompt_ids = prompt_ids[:-1] + [space_token_id] * num_spaces_needed + [prompt_ids[-1]]
+
+      return prompt_ids
+  
 
     def get_chat_request_role(self, request: ChatCompletionRequest) -> str:
         if request.add_generation_prompt:

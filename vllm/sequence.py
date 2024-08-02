@@ -11,6 +11,7 @@ from typing import (TYPE_CHECKING, Dict, List, Mapping, Optional, Set, Tuple,
 
 import torch
 
+from vllm.inputs.data import MeowData
 from vllm.lora.request import LoRARequest
 from vllm.pooling_params import PoolingParams
 from vllm.prompt_adapter.request import PromptAdapterRequest
@@ -121,18 +122,16 @@ class SequenceData:
         self,
         prompt_token_ids: List[int],
         output_token_ids: Optional[List[int]] = None,
-        index_id: Optional[str] = None,
-        should_index: bool = False,
+        meow_data: Optional[MeowData] = None,
         inputs: Optional["LLMInputs"] = None,
-        cache_already_copied: bool = False
+        cache_already_copied: bool = False # todo meow
     ) -> None:
         self._prompt_token_ids = array('l', prompt_token_ids)
         self._prompt_token_ids_tuple: Tuple[int, ...] = tuple(prompt_token_ids)
         self._output_token_ids = array(
             'l', output_token_ids if output_token_ids is not None else [])
 
-        self.index_id = index_id
-        self.should_index = should_index
+        self.meow_data = meow_data
         self.inputs = inputs
         self.cumulative_logprob = 0.0
         # The number of tokens that are computed (that run against the model).
@@ -224,10 +223,10 @@ class SequenceData:
         return self._cached_all_token_ids
     
     def get_index_id(self) -> str:
-        return self.index_id
+        return self.meow_data.index_id #todo meow - just return the meow data? 
     
     def should_persist(self) -> bool:
-        return self.should_index
+        return self.meow_data.should_index #todo meow - just return the meow data? 
 
     def get_prefix_token_ids(
             self, num_tokens: int
@@ -311,8 +310,7 @@ class Sequence:
             eos_token_id: Optional[int] = None,
             lora_request: Optional[LoRARequest] = None,
             prompt_adapter_request: Optional[PromptAdapterRequest] = None,
-            index_id: Optional[str] = None,
-            should_index: bool = False
+            meow_data: Optional[MeowData] = None,
     ) -> None:
         self.seq_id = seq_id
         self.inputs = inputs
@@ -321,7 +319,7 @@ class Sequence:
         self.lora_request = lora_request
         self.prompt_adapter_request = prompt_adapter_request
 
-        self.data = SequenceData(self.prompt_token_ids, index_id=index_id, should_index=should_index, inputs=inputs)
+        self.data = SequenceData(self.prompt_token_ids, meow_data=meow_data, inputs=inputs)
         self.output_logprobs: SampleLogprobs = []
         self.output_text = ""
 
