@@ -1001,11 +1001,23 @@ class Scheduler:
                 self.block_manager.get_common_computed_block_ids(
                     seq_group.get_seqs(status=SequenceStatus.RUNNING)))
 
+
             do_sample = True
             if seq_group.is_prefill():
                 seqs = seq_group.get_seqs()
                 # Prefill has only 1 sequence.
                 assert len(seqs) == 1
+                
+                #meow prefill start
+                meow_data = seqs[0].data.meow_data
+                if (len(common_computed_block_nums)>0):
+                    logger.info('blocks were already computed!')# if we already had common computed maybe no need to get the cache from disk
+                elif (meow_data.num_of_computed_tokens > 0): # otherwise- get computed tokens from our meow persistent cache
+                      num_indexed_blocks = int(meow_data.num_of_computed_tokens / self.cache_config.block_size)
+                      common_computed_block_nums = block_tables[seqs[0].seq_id][:num_indexed_blocks]
+                      meow_data.should_copy_blocks=True
+                #meow prefill end
+                
                 # In the next iteration, all prompt tokens are not computed.
                 # It means the prefill is chunked, and we don't need sampling.
                 # NOTE: We use get_len instead of get_prompt_len because when

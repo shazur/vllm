@@ -275,7 +275,7 @@ class Worker(LocalOrDistributedWorkerBase):
         )
 
     @torch.inference_mode()
-    def execute_worker(self, worker_input: WorkerInput) -> None: #todo meow- pass indexId
+    def execute_worker(self, worker_input: WorkerInput) -> None:
         virtual_engine = worker_input.virtual_engine
         # Issue cache operations.
         if (worker_input.blocks_to_swap_in is not None

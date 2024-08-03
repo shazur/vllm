@@ -14,7 +14,7 @@ from vllm.config import DecodingConfig, EngineConfig, ModelConfig
 from vllm.core.scheduler import SchedulerOutputs
 from vllm.engine.arg_utils import AsyncEngineArgs
 from vllm.engine.async_timeout import asyncio_timeout
-from vllm.engine.llm_engine import LLMEngine, PersistentKVCacheDict
+from vllm.engine.llm_engine import LLMEngine
 from vllm.engine.metrics import StatLoggerBase
 from vllm.executor.executor_base import ExecutorAsyncBase
 from vllm.executor.ray_utils import initialize_ray_cluster, ray
@@ -334,14 +334,14 @@ class _AsyncLLMEngine(LLMEngine):
                 prompt_token_ids
 
         llm_inputs = LLMInputs(prompt_token_ids=prompt_token_ids,
-                               prompt=inputs.get("prompt"),
+                               prompt=inputs.get("prompt"),#todo meow- maybe remove i dont remember
                                multi_modal_data=inputs.get("multi_modal_data"),
-                         indexed_prompt= inputs.get("indexed_prompt"),
-                         indexed_prompt_ids= inputs.get("indexed_prompt_ids"),
-                         new_prompt= inputs.get("new_prompt"),
-                         new_prompt_token_ids= inputs.get("new_prompt_token_ids"),
+                         indexed_prompt= inputs.get("indexed_prompt"),#todo meow- remove
+                         indexed_prompt_ids= inputs.get("indexed_prompt_ids"),#todo meow- remove
+                         new_prompt= inputs.get("new_prompt"),#todo meow- remove
+                         new_prompt_token_ids= inputs.get("new_prompt_token_ids"), #todo meow- remove
                          num_of_computed_tokens = inputs.get("num_of_computed_tokens"),
-                         indexed_kv_cache = inputs.get("indexed_kv_cache")
+                         indexed_kv_cache = inputs.get("indexed_kv_cache") #todo meow- remove
                          
                          )
 
