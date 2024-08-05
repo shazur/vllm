@@ -67,21 +67,6 @@ def get_default_config_root():
     )
 
 
-
-def get_default_cache_root():
-    return os.getenv(
-        "XDG_CACHE_HOME",
-        os.path.join(os.path.expanduser("~"), ".cache"),
-    )
-
-
-def get_default_config_root():
-    return os.getenv(
-        "XDG_CONFIG_HOME",
-        os.path.join(os.path.expanduser("~"), ".config"),
-    )
-
-
 # The begin-* and end* here are used by the documentation generator
 # to extract the used env vars.
 
