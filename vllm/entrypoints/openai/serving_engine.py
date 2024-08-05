@@ -8,8 +8,6 @@ from pydantic import Field
 from transformers import PreTrainedTokenizer, PreTrainedTokenizerFast
 from typing_extensions import Annotated
 
-from vllm.engine.llm_engine import KVCacheMetadata
-
 from vllm.config import ModelConfig
 from vllm.engine.protocol import AsyncEngineClient
 from vllm.entrypoints.logger import RequestLogger

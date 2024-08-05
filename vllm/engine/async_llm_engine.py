@@ -445,19 +445,8 @@ class AsyncLLMEngine:
     @classmethod
     def _get_executor_cls(
             cls, engine_config: EngineConfig) -> Type[ExecutorAsyncBase]:
-    def _get_executor_cls(
-            cls, engine_config: EngineConfig) -> Type[ExecutorAsyncBase]:
         distributed_executor_backend = (
             engine_config.parallel_config.distributed_executor_backend)
-        if isinstance(distributed_executor_backend, type):
-            if not issubclass(distributed_executor_backend, ExecutorAsyncBase):
-                raise TypeError(
-                    "distributed_executor_backend must be a subclass of "
-                    f"ExecutorAsyncBase. Got {distributed_executor_backend}.")
-            if distributed_executor_backend.uses_ray:  # type: ignore
-                initialize_ray_cluster(engine_config.parallel_config)
-            executor_class = distributed_executor_backend
-        elif engine_config.device_config.device_type == "neuron":
         if isinstance(distributed_executor_backend, type):
             if not issubclass(distributed_executor_backend, ExecutorAsyncBase):
                 raise TypeError(
@@ -498,23 +487,6 @@ class AsyncLLMEngine:
             else:
                 raise RuntimeError(
                     "Not supported distributed execution model on XPU device.")
-        elif engine_config.device_config.device_type == "openvino":
-            assert distributed_executor_backend is None, (
-                "Distributed execution is not supported with "
-                "the OpenVINO backend.")
-            from vllm.executor.openvino_executor import OpenVINOExecutorAsync
-            executor_class = OpenVINOExecutorAsync
-        elif engine_config.device_config.device_type == "xpu":
-            if distributed_executor_backend is None:
-                from vllm.executor.xpu_executor import XPUExecutorAsync
-                executor_class = XPUExecutorAsync
-            elif distributed_executor_backend == "ray":
-                initialize_ray_cluster(engine_config.parallel_config)
-                from vllm.executor.ray_xpu_executor import RayXPUExecutorAsync
-                executor_class = RayXPUExecutorAsync
-            else:
-                raise RuntimeError(
-                    "Not supported distributed execution model on XPU device.")
         elif distributed_executor_backend == "ray":
             initialize_ray_cluster(engine_config.parallel_config)
             from vllm.executor.ray_gpu_executor import RayGPUExecutorAsync
@@ -527,6 +499,7 @@ class AsyncLLMEngine:
             from vllm.executor.gpu_executor import GPUExecutorAsync
             executor_class = GPUExecutorAsync
         return executor_class
+
 
     @classmethod
     def from_engine_args(
@@ -569,7 +542,6 @@ class AsyncLLMEngine:
         # Create the async LLM engine.
         engine = cls(
             executor_class.uses_ray,
-            executor_class.uses_ray,
             engine_args.engine_use_ray,
             **engine_config.to_dict(),
             executor_class=executor_class,
@@ -577,7 +549,6 @@ class AsyncLLMEngine:
             log_stats=not engine_args.disable_log_stats,
             start_engine_loop=start_engine_loop,
             usage_context=usage_context,
-            stat_loggers=stat_loggers,
             stat_loggers=stat_loggers,
         )
         return engine
@@ -609,16 +580,7 @@ class AsyncLLMEngine:
         self,
         lora_request: Optional[LoRARequest] = None,
     ) -> "PreTrainedTokenizer":
-    async def get_tokenizer(
-        self,
-        lora_request: Optional[LoRARequest] = None,
-    ) -> "PreTrainedTokenizer":
         if self.engine_use_ray:
-            return await self.engine.get_tokenizer.remote(  # type: ignore
-                lora_request)
-
-        return await (self.engine.get_tokenizer_group().
-                      get_lora_tokenizer_async(lora_request))
             return await self.engine.get_tokenizer.remote(  # type: ignore
                 lora_request)
 
@@ -654,8 +616,6 @@ class AsyncLLMEngine:
             parallel_config = kwargs["parallel_config"]
             if (parallel_config.tensor_parallel_size == 1
                     and parallel_config.pipeline_parallel_size == 1):
-            if (parallel_config.tensor_parallel_size == 1
-                    and parallel_config.pipeline_parallel_size == 1):
                 num_gpus = cache_config.gpu_memory_utilization
             else:
                 num_gpus = 1
@@ -663,7 +623,6 @@ class AsyncLLMEngine:
                 self._engine_class).remote
         return engine_class(*args, **kwargs)
 
-    async def engine_step(self, virtual_engine: int) -> bool:
     async def engine_step(self, virtual_engine: int) -> bool:
         """Kick the engine to process the waiting requests.
 
@@ -730,7 +689,6 @@ class AsyncLLMEngine:
                 self.engine.parallel_config.pipeline_parallel_size
         has_requests_in_progress = [False] * pipeline_parallel_size
         while True:
-            if not any(has_requests_in_progress):
             if not any(has_requests_in_progress):
                 logger.debug("Waiting for new requests...")
                 # Stop the execute model loop in parallel workers until there

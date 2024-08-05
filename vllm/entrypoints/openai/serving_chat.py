@@ -25,6 +25,7 @@ from vllm.entrypoints.openai.protocol import (
 from vllm.entrypoints.openai.serving_engine import (LoRAModulePath,
                                                     OpenAIServing,
                                                     PromptAdapterPath)
+from vllm.inputs.data import MeowData
 from vllm.inputs import PromptInputs
 from vllm.logger import init_logger
 from vllm.multimodal import MultiModalDataDict
