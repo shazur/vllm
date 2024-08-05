@@ -3,6 +3,8 @@ import time
 from functools import partial
 from typing import (AsyncIterator, Callable, Dict, Iterable, List, Mapping,
                     Optional, Set, Tuple, Type, Union)
+from typing import (AsyncIterator, Callable, Dict, Iterable, List, Mapping,
+                    Optional, Set, Tuple, Type, Union)
 
 from transformers import PreTrainedTokenizer
 
@@ -10,7 +12,8 @@ from datetime import datetime
 
 from vllm.inputs.data import MeowData
 import vllm.envs as envs
-from vllm.config import DecodingConfig, EngineConfig, ModelConfig
+from vllm.config import (DecodingConfig, EngineConfig, LoRAConfig, ModelConfig,
+                         ParallelConfig, SchedulerConfig)
 from vllm.core.scheduler import SchedulerOutputs
 from vllm.engine.arg_utils import AsyncEngineArgs
 from vllm.engine.async_timeout import asyncio_timeout
@@ -306,6 +309,10 @@ class _AsyncLLMEngine(LLMEngine):
         """Stop the remote worker execution loop."""
         await self.model_executor.stop_remote_worker_execution_loop_async()
 
+    async def stop_remote_worker_execution_loop_async(self) -> None:
+        """Stop the remote worker execution loop."""
+        await self.model_executor.stop_remote_worker_execution_loop_async()
+
     async def process_model_inputs_async(
         self,
         request_id: str,
@@ -438,8 +445,19 @@ class AsyncLLMEngine:
     @classmethod
     def _get_executor_cls(
             cls, engine_config: EngineConfig) -> Type[ExecutorAsyncBase]:
+    def _get_executor_cls(
+            cls, engine_config: EngineConfig) -> Type[ExecutorAsyncBase]:
         distributed_executor_backend = (
             engine_config.parallel_config.distributed_executor_backend)
+        if isinstance(distributed_executor_backend, type):
+            if not issubclass(distributed_executor_backend, ExecutorAsyncBase):
+                raise TypeError(
+                    "distributed_executor_backend must be a subclass of "
+                    f"ExecutorAsyncBase. Got {distributed_executor_backend}.")
+            if distributed_executor_backend.uses_ray:  # type: ignore
+                initialize_ray_cluster(engine_config.parallel_config)
+            executor_class = distributed_executor_backend
+        elif engine_config.device_config.device_type == "neuron":
         if isinstance(distributed_executor_backend, type):
             if not issubclass(distributed_executor_backend, ExecutorAsyncBase):
                 raise TypeError(
@@ -452,11 +470,34 @@ class AsyncLLMEngine:
             from vllm.executor.neuron_executor import NeuronExecutorAsync
             executor_class = NeuronExecutorAsync
         elif engine_config.device_config.device_type == "tpu":
-            from vllm.executor.tpu_executor import TPUExecutorAsync
-            executor_class = TPUExecutorAsync
+            if distributed_executor_backend == "ray":
+                initialize_ray_cluster(engine_config.parallel_config)
+                from vllm.executor.ray_tpu_executor import RayTPUExecutorAsync
+                executor_class = RayTPUExecutorAsync
+            else:
+                assert distributed_executor_backend is None
+                from vllm.executor.tpu_executor import TPUExecutorAsync
+                executor_class = TPUExecutorAsync
         elif engine_config.device_config.device_type == "cpu":
             from vllm.executor.cpu_executor import CPUExecutorAsync
             executor_class = CPUExecutorAsync
+        elif engine_config.device_config.device_type == "openvino":
+            assert distributed_executor_backend is None, (
+                "Distributed execution is not supported with "
+                "the OpenVINO backend.")
+            from vllm.executor.openvino_executor import OpenVINOExecutorAsync
+            executor_class = OpenVINOExecutorAsync
+        elif engine_config.device_config.device_type == "xpu":
+            if distributed_executor_backend is None:
+                from vllm.executor.xpu_executor import XPUExecutorAsync
+                executor_class = XPUExecutorAsync
+            elif distributed_executor_backend == "ray":
+                initialize_ray_cluster(engine_config.parallel_config)
+                from vllm.executor.ray_xpu_executor import RayXPUExecutorAsync
+                executor_class = RayXPUExecutorAsync
+            else:
+                raise RuntimeError(
+                    "Not supported distributed execution model on XPU device.")
         elif engine_config.device_config.device_type == "openvino":
             assert distributed_executor_backend is None, (
                 "Distributed execution is not supported with "
@@ -505,8 +546,29 @@ class AsyncLLMEngine:
 
         executor_class = cls._get_executor_cls(engine_config)
 
+        return executor_class
+
+    @classmethod
+    def from_engine_args(
+        cls,
+        engine_args: AsyncEngineArgs,
+        start_engine_loop: bool = True,
+        usage_context: UsageContext = UsageContext.ENGINE_CONTEXT,
+        stat_loggers: Optional[Dict[str, StatLoggerBase]] = None,
+    ) -> "AsyncLLMEngine":
+        """Creates an async LLM engine from the engine arguments."""
+        # Create the engine configs.
+        engine_config = engine_args.create_engine_config()
+
+        if engine_args.engine_use_ray:
+            from vllm.executor import ray_utils
+            ray_utils.assert_ray_available()
+
+        executor_class = cls._get_executor_cls(engine_config)
+
         # Create the async LLM engine.
         engine = cls(
+            executor_class.uses_ray,
             executor_class.uses_ray,
             engine_args.engine_use_ray,
             **engine_config.to_dict(),
@@ -515,6 +577,7 @@ class AsyncLLMEngine:
             log_stats=not engine_args.disable_log_stats,
             start_engine_loop=start_engine_loop,
             usage_context=usage_context,
+            stat_loggers=stat_loggers,
             stat_loggers=stat_loggers,
         )
         return engine
@@ -546,7 +609,16 @@ class AsyncLLMEngine:
         self,
         lora_request: Optional[LoRARequest] = None,
     ) -> "PreTrainedTokenizer":
+    async def get_tokenizer(
+        self,
+        lora_request: Optional[LoRARequest] = None,
+    ) -> "PreTrainedTokenizer":
         if self.engine_use_ray:
+            return await self.engine.get_tokenizer.remote(  # type: ignore
+                lora_request)
+
+        return await (self.engine.get_tokenizer_group().
+                      get_lora_tokenizer_async(lora_request))
             return await self.engine.get_tokenizer.remote(  # type: ignore
                 lora_request)
 
@@ -582,6 +654,8 @@ class AsyncLLMEngine:
             parallel_config = kwargs["parallel_config"]
             if (parallel_config.tensor_parallel_size == 1
                     and parallel_config.pipeline_parallel_size == 1):
+            if (parallel_config.tensor_parallel_size == 1
+                    and parallel_config.pipeline_parallel_size == 1):
                 num_gpus = cache_config.gpu_memory_utilization
             else:
                 num_gpus = 1
@@ -589,6 +663,7 @@ class AsyncLLMEngine:
                 self._engine_class).remote
         return engine_class(*args, **kwargs)
 
+    async def engine_step(self, virtual_engine: int) -> bool:
     async def engine_step(self, virtual_engine: int) -> bool:
         """Kick the engine to process the waiting requests.
 
@@ -621,14 +696,18 @@ class AsyncLLMEngine:
             request_outputs = await self.engine.step.remote()  # type: ignore
         else:
             request_outputs = await self.engine.step_async(virtual_engine)
+            request_outputs = await self.engine.step_async(virtual_engine)
 
         # Put the outputs into the corresponding streams.
+        finished = True
         finished = True
         for request_output in request_outputs:
             self._request_tracker.process_request_output(
                 request_output, verbose=self.log_requests)
             finished = finished and request_output.finished
+            finished = finished and request_output.finished
 
+        return not finished
         return not finished
 
     async def _engine_abort(self, request_ids: Iterable[str]):
@@ -644,9 +723,28 @@ class AsyncLLMEngine:
             pipeline_parallel_size = \
                 self.engine.parallel_config.pipeline_parallel_size
         has_requests_in_progress = [False] * pipeline_parallel_size
+        if self.engine_use_ray:
+            pipeline_parallel_size = 1  # type: ignore
+        else:
+            pipeline_parallel_size = \
+                self.engine.parallel_config.pipeline_parallel_size
+        has_requests_in_progress = [False] * pipeline_parallel_size
         while True:
             if not any(has_requests_in_progress):
+            if not any(has_requests_in_progress):
                 logger.debug("Waiting for new requests...")
+                # Stop the execute model loop in parallel workers until there
+                # are more requests to process. This avoids waiting
+                # indefinitely in torch.distributed ops which may otherwise
+                # timeout, and unblocks the RPC thread in the workers so that
+                # they can process any other queued control plane messages,
+                # such as add/remove lora adapters.
+                if self.engine_use_ray:
+                    await (self.engine.stop_remote_worker_execution_loop.
+                           remote()  # type: ignore
+                           )
+                else:
+                    await self.engine.stop_remote_worker_execution_loop_async()
                 # Stop the execute model loop in parallel workers until there
                 # are more requests to process. This avoids waiting
                 # indefinitely in torch.distributed ops which may otherwise
@@ -973,6 +1071,14 @@ class AsyncLLMEngine:
         else:
             return self.engine.get_model_config()
 
+    async def get_parallel_config(self) -> ParallelConfig:
+        """Get the parallel configuration of the vLLM engine."""
+        if self.engine_use_ray:
+            return await self.engine.get_parallel_config.remote(  # type: ignore
+            )
+        else:
+            return self.engine.get_parallel_config()
+
     async def get_decoding_config(self) -> DecodingConfig:
         """Get the decoding configuration of the vLLM engine."""
         if self.engine_use_ray:
@@ -980,6 +1086,22 @@ class AsyncLLMEngine:
             )
         else:
             return self.engine.get_decoding_config()
+
+    async def get_scheduler_config(self) -> SchedulerConfig:
+        """Get the scheduling configuration of the vLLM engine."""
+        if self.engine_use_ray:
+            return await self.engine.get_scheduler_config.remote(  # type: ignore
+            )
+        else:
+            return self.engine.get_scheduler_config()
+
+    async def get_lora_config(self) -> LoRAConfig:
+        """Get the lora configuration of the vLLM engine."""
+        if self.engine_use_ray:
+            return await self.engine.get_lora_config.remote(  # type: ignore
+            )
+        else:
+            return self.engine.get_lora_config()
 
     async def do_log_stats(
             self,

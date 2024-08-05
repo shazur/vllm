@@ -45,8 +45,8 @@ TensorMetadata = namedtuple("TensorMetadata", ["device", "dtype", "size"])
 
 
 def _split_tensor_dict(
-        tensor_dict: Dict[str, Union[torch.Tensor, Any]],
-        prefix: str = "") -> Tuple[List[Tuple[str, Any]], List[torch.Tensor]]:
+    tensor_dict: Dict[str, Union[torch.Tensor, Any]]
+) -> Tuple[List[Tuple[str, Any]], List[torch.Tensor]]:
     """Split the tensor dictionary into two parts:
     1. A list of (key, value) pairs. If the value is a tensor, it is replaced
          by its metadata.
@@ -56,7 +56,7 @@ def _split_tensor_dict(
     metadata will be "key1%key2".
     """
     metadata_list: List[Tuple[str, Any]] = []
-    tensor_list = []
+    tensor_list: List[torch.Tensor] = []
     for key, value in tensor_dict.items():
         assert "%" not in key, (
             "Avoid having '%' in key "
@@ -593,7 +593,8 @@ class GroupCoordinator:
     def send_tensor_dict(
         self,
         tensor_dict: Dict[str, Union[torch.Tensor, Any]],
-        dst: Optional[int] = None
+        dst: Optional[int] = None,
+        all_gather_group: Optional["GroupCoordinator"] = None,
     ) -> Optional[Dict[str, Union[torch.Tensor, Any]]]:
         """Send the input tensor dictionary.
         NOTE: `dst` is the local rank of the source rank.
@@ -601,6 +602,11 @@ class GroupCoordinator:
         # Bypass the function if we are using only 1 GPU.
         if not torch.distributed.is_initialized() or self.world_size == 1:
             return tensor_dict
+
+        all_gather_size = (1 if all_gather_group is None else
+                           all_gather_group.world_size)
+        all_gather_rank = (0 if all_gather_group is None else
+                           all_gather_group.rank_in_group)
 
         group = self.device_group
         metadata_group = self.cpu_group
@@ -622,6 +628,12 @@ class GroupCoordinator:
             if tensor.numel() == 0:
                 # Skip sending empty tensors.
                 continue
+
+            # send-allgather: send only a slice, then do allgather.
+            if (all_gather_group is not None
+                    and tensor.numel() % all_gather_size == 0):
+                tensor = tensor.reshape(all_gather_size, -1)[all_gather_rank]
+
             if tensor.is_cpu:
                 # use metadata_group for CPU tensors
                 torch.distributed.send(tensor,
@@ -636,7 +648,8 @@ class GroupCoordinator:
 
     def recv_tensor_dict(
         self,
-        src: Optional[int] = None
+        src: Optional[int] = None,
+        all_gather_group: Optional["GroupCoordinator"] = None,
     ) -> Optional[Dict[str, Union[torch.Tensor, Any]]]:
         """Recv the input tensor dictionary.
         NOTE: `src` is the local rank of the source rank.
@@ -644,6 +657,11 @@ class GroupCoordinator:
         # Bypass the function if we are using only 1 GPU.
         if not torch.distributed.is_initialized() or self.world_size == 1:
             return None
+
+        all_gather_size = (1 if all_gather_group is None else
+                           all_gather_group.world_size)
+        all_gather_rank = (0 if all_gather_group is None else
+                           all_gather_group.rank_in_group)
 
         group = self.device_group
         metadata_group = self.cpu_group
@@ -661,8 +679,18 @@ class GroupCoordinator:
                                      device=value.device)
                 if tensor.numel() == 0:
                     # Skip broadcasting empty tensors.
-                    _update_nested_dict(tensor_dict, key, tensor)
+                    tensor_dict[key] = tensor
                     continue
+
+                # send-allgather: send only a slice, then do allgather.
+                use_all_gather = (all_gather_group is not None
+                                  and tensor.numel() % all_gather_size == 0)
+
+                if use_all_gather:
+                    orig_shape = tensor.shape
+                    tensor = tensor.reshape(all_gather_size,
+                                            -1)[all_gather_rank]
+
                 if tensor.is_cpu:
                     # use metadata_group for CPU tensors
                     torch.distributed.recv(tensor,
@@ -673,9 +701,15 @@ class GroupCoordinator:
                     torch.distributed.recv(tensor,
                                            src=self.ranks[src],
                                            group=group)
-                _update_nested_dict(tensor_dict, key, tensor)
+                if use_all_gather:
+                    # do the allgather
+                    tensor = all_gather_group.all_gather(  # type: ignore
+                        tensor, dim=0)
+                    tensor = tensor.reshape(orig_shape)
+
+                tensor_dict[key] = tensor
             else:
-                _update_nested_dict(tensor_dict, key, value)
+                tensor_dict[key] = value
         return tensor_dict
 
     def barrier(self):

@@ -1,16 +1,11 @@
 import time
 from contextlib import contextmanager
-from typing import (TYPE_CHECKING, Any, Any, ClassVar, Dict, Dict, Iterable, List,
-                    Mapping, Optional, TypedDict)
+from typing import (TYPE_CHECKING, Any, ClassVar, Dict, Iterable, List,
+                    Mapping, Optional)
 from typing import Sequence as GenericSequence
 from typing import Set, Type, TypeVar, Union
-import torch
 
-from transformers import PreTrainedTokenizer
-
-from vllm.inputs.data import MeowData
 import vllm.envs as envs
-import vllm
 from vllm.config import (CacheConfig, DecodingConfig, DeviceConfig,
                          EngineConfig, LoadConfig, LoRAConfig, ModelConfig,
                          MultiModalConfig, ObservabilityConfig, ParallelConfig,
@@ -43,8 +38,8 @@ from vllm.tracing import (SpanAttributes, SpanKind, extract_trace_context,
                           init_tracer)
 from vllm.transformers_utils.config import try_get_generation_config
 from vllm.transformers_utils.detokenizer import Detokenizer
-from vllm.transformers_utils.tokenizer_group import (BaseTokenizerGroup,
-                                                     get_tokenizer_group)
+from vllm.transformers_utils.tokenizer_group import (
+    AnyTokenizer, BaseTokenizerGroup, init_tokenizer_from_configs)
 from vllm.usage.usage_lib import (UsageContext, is_usage_stats_enabled,
                                   usage_message)
 from vllm.utils import Counter
@@ -194,7 +189,7 @@ class LLMEngine:
             "decoding_config=%r, observability_config=%r, "
             "seed=%d, served_model_name=%s, use_v2_block_manager=%s, "
             "enable_prefix_caching=%s)",
-            vllm.__version__,
+            VLLM_VERSION,
             model_config.model,
             speculative_config,
             model_config.tokenizer,
@@ -484,29 +479,21 @@ class LLMEngine:
         return self.tokenizer
 
     def get_tokenizer(
-            self,
-            lora_request: Optional[LoRARequest] = None
-    ) -> "PreTrainedTokenizer":
+        self,
+        lora_request: Optional[LoRARequest] = None,
+    ) -> AnyTokenizer:
         return self.get_tokenizer_group().get_lora_tokenizer(lora_request)
 
-    def get_tokenizer_for_seq(self,
-                              sequence: Sequence) -> "PreTrainedTokenizer":
+    def get_tokenizer_for_seq(self, sequence: Sequence) -> AnyTokenizer:
         return self.get_tokenizer_group().get_lora_tokenizer(
             sequence.lora_request)
 
-    def _init_tokenizer(self, **tokenizer_init_kwargs) -> BaseTokenizerGroup:
-        init_kwargs = dict(
-            tokenizer_id=self.model_config.tokenizer,
-            enable_lora=bool(self.lora_config),
-            max_num_seqs=self.scheduler_config.max_num_seqs,
-            max_input_length=None,
-            tokenizer_mode=self.model_config.tokenizer_mode,
-            trust_remote_code=self.model_config.trust_remote_code,
-            revision=self.model_config.tokenizer_revision)
-        init_kwargs.update(tokenizer_init_kwargs)
-
-        return get_tokenizer_group(self.parallel_config.tokenizer_pool_config,
-                                   **init_kwargs)
+    def _init_tokenizer(self) -> BaseTokenizerGroup:
+        return init_tokenizer_from_configs(
+            model_config=self.model_config,
+            scheduler_config=self.scheduler_config,
+            parallel_config=self.parallel_config,
+            enable_lora=bool(self.lora_config))
 
     def _verify_args(self) -> None:
         self.model_config.verify_with_parallel_config(self.parallel_config)
@@ -537,7 +524,6 @@ class LLMEngine:
         lora_request: Optional[LoRARequest],
         prompt_adapter_request: Optional[PromptAdapterRequest],
         trace_headers: Optional[Mapping[str, str]] = None,
-        meow_data: Optional[MeowData] = None,
     ) -> None:
         # Create the sequences.
         block_size = self.cache_config.block_size
@@ -545,7 +531,7 @@ class LLMEngine:
         eos_token_id = self._get_eos_token_id(lora_request)
 
         seq = Sequence(seq_id, processed_inputs, block_size, eos_token_id,
-                       lora_request, prompt_adapter_request, meow_data)
+                       lora_request, prompt_adapter_request)
 
         # Create a SequenceGroup based on SamplingParams or PoolingParams
         if isinstance(params, SamplingParams):
@@ -769,9 +755,21 @@ class LLMEngine:
         """Gets the model configuration."""
         return self.model_config
 
+    def get_parallel_config(self) -> ParallelConfig:
+        """Gets the parallel configuration."""
+        return self.parallel_config
+
     def get_decoding_config(self) -> DecodingConfig:
         """Gets the decoding configuration."""
         return self.decoding_config
+
+    def get_scheduler_config(self) -> SchedulerConfig:
+        """Gets the scheduler configuration."""
+        return self.scheduler_config
+
+    def get_lora_config(self) -> LoRAConfig:
+        """Gets the LoRA configuration."""
+        return self.lora_config
 
     def get_num_unfinished_requests(self) -> int:
         """Gets the number of unfinished requests."""
@@ -1237,120 +1235,3 @@ class LLMEngine:
             seq_span.set_attribute(
                 SpanAttributes.LLM_LATENCY_TIME_TO_FIRST_TOKEN, ttft)
             seq_span.set_attribute(SpanAttributes.LLM_LATENCY_E2E, e2e_time)
-
-    def is_tracing_enabled(self) -> bool:
-        return self.tracer is not None
-
-    def do_tracing(self, scheduler_outputs: SchedulerOutputs) -> None:
-        if self.tracer is None:
-            return
-
-        for scheduled_seq_group in scheduler_outputs.scheduled_seq_groups:
-            seq_group = scheduled_seq_group.seq_group
-            if seq_group.is_finished():
-                self.create_trace_span(seq_group)
-
-    def create_trace_span(self, seq_group: SequenceGroup) -> None:
-        if self.tracer is None or seq_group.sampling_params is None:
-            return
-        arrival_time_nano_seconds = int(seq_group.metrics.arrival_time * 1e9)
-
-        trace_context = extract_trace_context(seq_group.trace_headers)
-
-        with self.tracer.start_as_current_span(
-                "llm_request",
-                kind=SpanKind.SERVER,
-                context=trace_context,
-                start_time=arrival_time_nano_seconds) as seq_span:
-            metrics = seq_group.metrics
-            ttft = metrics.first_token_time - metrics.arrival_time
-            e2e_time = metrics.finished_time - metrics.arrival_time
-            # attribute names are based on
-            # https://github.com/open-telemetry/semantic-conventions/blob/main/docs/gen-ai/llm-spans.md
-            seq_span.set_attribute(SpanAttributes.LLM_RESPONSE_MODEL,
-                                   self.model_config.model)
-            seq_span.set_attribute(SpanAttributes.LLM_REQUEST_ID,
-                                   seq_group.request_id)
-            seq_span.set_attribute(SpanAttributes.LLM_REQUEST_TEMPERATURE,
-                                   seq_group.sampling_params.temperature)
-            seq_span.set_attribute(SpanAttributes.LLM_REQUEST_TOP_P,
-                                   seq_group.sampling_params.top_p)
-            seq_span.set_attribute(SpanAttributes.LLM_REQUEST_MAX_TOKENS,
-                                   seq_group.sampling_params.max_tokens)
-            seq_span.set_attribute(SpanAttributes.LLM_REQUEST_BEST_OF,
-                                   seq_group.sampling_params.best_of)
-            seq_span.set_attribute(SpanAttributes.LLM_REQUEST_N,
-                                   seq_group.sampling_params.n)
-            seq_span.set_attribute(SpanAttributes.LLM_USAGE_NUM_SEQUENCES,
-                                   seq_group.num_seqs())
-            seq_span.set_attribute(SpanAttributes.LLM_USAGE_PROMPT_TOKENS,
-                                   len(seq_group.prompt_token_ids))
-            seq_span.set_attribute(
-                SpanAttributes.LLM_USAGE_COMPLETION_TOKENS,
-                sum([
-                    seq.get_output_len()
-                    for seq in seq_group.get_finished_seqs()
-                ]))
-            seq_span.set_attribute(SpanAttributes.LLM_LATENCY_TIME_IN_QUEUE,
-                                   metrics.time_in_queue)
-            seq_span.set_attribute(
-                SpanAttributes.LLM_LATENCY_TIME_TO_FIRST_TOKEN, ttft)
-            seq_span.set_attribute(SpanAttributes.LLM_LATENCY_E2E, e2e_time)
-
-class KVCacheMetadata(TypedDict):
-    data: List[Any]
-    num_of_computed_tokens: int
-    prompt: str
-
-class PersistentKVCacheDict:
-    def __init__(self, index_id, kv_caches, blocks, computed_token_ids):
-        self.dict = {index_id: KVCacheMetadata({
-            "computed_token_ids": computed_token_ids,
-            "data": self._select_blocks(kv_caches, blocks)}
-            )}
-    def getKvCaches(self):
-        return self.dict
-
-    def _select_blocks(self, tensor_list, indices):
-        # Convert indices to a tensor if it's not already
-        if not isinstance(indices, torch.Tensor):
-            indices = torch.tensor(indices)
-        
-        # Ensure indices is 1D
-        indices = indices.squeeze()
-        
-        # Get the value of x from the indices
-        x = indices.size(0)
-        
-        results = []
-        for tensor in tensor_list:
-            # Select the indices from the second dimension of the tensor
-            result = tensor[:, indices, :, :, :]
-            
-            # Ensure the output shape is correct
-            assert result.shape == (2, x, 16, 8, 128), f"Unexpected shape: {result.shape}"
-            
-            results.append(result)
-    
-        return results
-    
-    @classmethod
-    def load_from_disk(cls, filepath):
-        start_time = datetime.now() 
-        # Load the dictionary from disk
-        loaded_dict = torch.load(filepath, mmap=True, map_location='cpu') #todo meow- go back to gpu, this is slow
-        
-        # Create an instance of the class
-        instance = cls.__new__(cls)
-        
-        # Directly set the dict attribute
-        instance.dict = loaded_dict
-        
-        duration = (datetime.now() - start_time).total_seconds()
-
-        #todo: add stats per MB \ per loaded block
-        meow_stats.add_operation_duration("load_cache_from_disk", duration) 
-
-        print(f"loading cache from disk took: {duration} seconds. exact_time: {datetime.now().strftime('%Y-%m-%d %H:%M:%S.%f')[:-3]}")
-
-        return instance
