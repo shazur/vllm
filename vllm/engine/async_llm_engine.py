@@ -308,10 +308,6 @@ class _AsyncLLMEngine(LLMEngine):
         """Stop the remote worker execution loop."""
         await self.model_executor.stop_remote_worker_execution_loop_async()
 
-    async def stop_remote_worker_execution_loop_async(self) -> None:
-        """Stop the remote worker execution loop."""
-        await self.model_executor.stop_remote_worker_execution_loop_async()
-
     async def process_model_inputs_async(
         self,
         request_id: str,
@@ -491,27 +487,6 @@ class AsyncLLMEngine:
             executor_class = GPUExecutorAsync
         return executor_class
 
-
-    @classmethod
-    def from_engine_args(
-        cls,
-        engine_args: AsyncEngineArgs,
-        start_engine_loop: bool = True,
-        usage_context: UsageContext = UsageContext.ENGINE_CONTEXT,
-        stat_loggers: Optional[Dict[str, StatLoggerBase]] = None,
-    ) -> "AsyncLLMEngine":
-        """Creates an async LLM engine from the engine arguments."""
-        # Create the engine configs.
-        engine_config = engine_args.create_engine_config()
-
-        if engine_args.engine_use_ray:
-            from vllm.executor import ray_utils
-            ray_utils.assert_ray_available()
-
-        executor_class = cls._get_executor_cls(engine_config)
-
-        return executor_class
-
     @classmethod
     def from_engine_args(
         cls,
@@ -669,27 +644,9 @@ class AsyncLLMEngine:
             pipeline_parallel_size = \
                 self.engine.parallel_config.pipeline_parallel_size
         has_requests_in_progress = [False] * pipeline_parallel_size
-        if self.engine_use_ray:
-            pipeline_parallel_size = 1  # type: ignore
-        else:
-            pipeline_parallel_size = \
-                self.engine.parallel_config.pipeline_parallel_size
-        has_requests_in_progress = [False] * pipeline_parallel_size
         while True:
             if not any(has_requests_in_progress):
                 logger.debug("Waiting for new requests...")
-                # Stop the execute model loop in parallel workers until there
-                # are more requests to process. This avoids waiting
-                # indefinitely in torch.distributed ops which may otherwise
-                # timeout, and unblocks the RPC thread in the workers so that
-                # they can process any other queued control plane messages,
-                # such as add/remove lora adapters.
-                if self.engine_use_ray:
-                    await (self.engine.stop_remote_worker_execution_loop.
-                           remote()  # type: ignore
-                           )
-                else:
-                    await self.engine.stop_remote_worker_execution_loop_async()
                 # Stop the execute model loop in parallel workers until there
                 # are more requests to process. This avoids waiting
                 # indefinitely in torch.distributed ops which may otherwise

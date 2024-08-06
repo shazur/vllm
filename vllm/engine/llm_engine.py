@@ -1,7 +1,7 @@
 import time
 from contextlib import contextmanager
 from typing import (TYPE_CHECKING, Any, ClassVar, Dict, Iterable, List,
-                    Mapping, Optional, TypedDict)
+                    Mapping, Optional)
 from typing import Sequence as GenericSequence
 from typing import Set, Type, TypeVar, Union
 
@@ -48,9 +48,9 @@ from vllm.version import __version__ as VLLM_VERSION
 from datetime import datetime
 
 from vllm.inputs.data import MeowData
+from vllm.engine.meow_persistence_handler import MeowPersistenceHandler
 
 from vllm.meow_stats import MeowStats
-import torch
 
 meow_stats = MeowStats()
 
@@ -871,10 +871,9 @@ class LLMEngine:
           #get relevant blocks to save
           blocks = list(seq_group_meta.block_tables.values())[0]  
           
-          persistent_kv_caches = PersistentKVCacheDict(meow_data.index_id, output.kv_caches, blocks, seq_data.inputs['prompt_token_ids'],meow_data.eos_token)
-          #write kv_caches to disk - TODO: should be async
-          torch.save(persistent_kv_caches.getKvCaches(), meow_data.index_id + ".pt")  #todo: filename should be index_id
-          print("meow request finished!!!")
+          persistent_kv_caches = MeowPersistenceHandler(meow_data.index_id, output.kv_caches, blocks, seq_data.inputs['prompt_token_ids'],meow_data.eos_token)
+          persistent_kv_caches.writeToDisk(meow_data.index_id)
+          logger.info("meow request finished!!!")
 
     def step(self) -> List[Union[RequestOutput, EmbeddingRequestOutput]]:
         """Performs one decoding iteration and returns newly generated results.
@@ -1243,62 +1242,3 @@ class LLMEngine:
             seq_span.set_attribute(
                 SpanAttributes.LLM_LATENCY_TIME_TO_FIRST_TOKEN, ttft)
             seq_span.set_attribute(SpanAttributes.LLM_LATENCY_E2E, e2e_time)
-
-class KVCacheMetadata(TypedDict):
-    data: List[Any]
-    num_of_computed_tokens: int
-    prompt: str
-
-class PersistentKVCacheDict:
-    def __init__(self, index_id, kv_caches, blocks, computed_token_ids, eos_token: int):
-        self.dict = {index_id: KVCacheMetadata({
-            "computed_token_ids": computed_token_ids,
-            "data": self._select_blocks(kv_caches, blocks),
-            "eos_token": eos_token}
-            )}
-    def getKvCaches(self):
-        return self.dict
-
-    def _select_blocks(self, tensor_list, indices):
-        # Convert indices to a tensor if it's not already
-        if not isinstance(indices, torch.Tensor):
-            indices = torch.tensor(indices)
-        
-        # Ensure indices is 1D
-        indices = indices.squeeze()
-        
-        # Get the value of x from the indices
-        x = indices.size(0)
-        
-        results = []
-        for tensor in tensor_list:
-            # Select the indices from the second dimension of the tensor
-            result = tensor[:, indices, :, :, :]
-            
-            # Ensure the output shape is correct
-            assert result.shape == (2, x, 16, 8, 128), f"Unexpected shape: {result.shape}"
-            
-            results.append(result)
-    
-        return results
-    
-    @classmethod
-    def load_from_disk(cls, filepath):
-        start_time = datetime.now() 
-        # Load the dictionary from disk
-        loaded_dict = torch.load(filepath, mmap=True, map_location='cpu') #todo meow- go back to gpu, this is slow
-        
-        # Create an instance of the class
-        instance = cls.__new__(cls)
-        
-        # Directly set the dict attribute
-        instance.dict = loaded_dict
-        
-        duration = (datetime.now() - start_time).total_seconds()
-
-        #todo: add stats per MB \ per loaded block
-        meow_stats.add_operation_duration("load_cache_from_disk", duration) 
-
-        print(f"loading cache from disk took: {duration} seconds. exact_time: {datetime.now().strftime('%Y-%m-%d %H:%M:%S.%f')[:-3]}")
-
-        return instance

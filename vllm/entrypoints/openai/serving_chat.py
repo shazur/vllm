@@ -7,8 +7,6 @@ from typing import Union
 from fastapi import Request
 from transformers import PreTrainedTokenizer
 
-from vllm.engine.llm_engine import PersistentKVCacheDict
-
 from vllm.config import ModelConfig
 from vllm.engine.protocol import AsyncEngineClient
 from vllm.entrypoints.chat_utils import (ConversationMessage,
@@ -36,6 +34,9 @@ from vllm.tracing import (contains_trace_headers, extract_trace_headers,
 from vllm.utils import random_uuid
 
 logger = init_logger(__name__)
+
+from vllm.engine.meow_persistence_handler import MeowPersistenceHandler
+
 
 
 class OpenAIServingChat(OpenAIServing):
@@ -215,9 +216,7 @@ class OpenAIServingChat(OpenAIServing):
           # )
       elif request.index_id:  # 2. opt request 
           assert len(request.messages) == 1  # we only support 1 message for opt requests
-          cached_request_dict = PersistentKVCacheDict.load_from_disk(f"{request.index_id}.pt").getKvCaches()
-          assert request.index_id in cached_request_dict 
-          cached_request_metadata = cached_request_dict[request.index_id]
+          cached_request_metadata = MeowPersistenceHandler.load_metadata_from_disk(f"{request.index_id}.metadata.pt").getPersistedMetadata()
           computed_token_ids = cached_request_metadata['computed_token_ids']
           
           no_special_tokens_new_prompt_token_ids = tokenizer(
@@ -230,11 +229,8 @@ class OpenAIServingChat(OpenAIServing):
 
           # 2.1: add the new prompt ids aka "question" to the indexed promptids
           engine_inputs["prompt_token_ids"] = computed_token_ids + no_special_tokens_new_prompt_token_ids + [meow_data.eos_token]
-          
-          # 2.2: add the loaded cache
-          meow_data.indexed_kv_caches = cached_request_metadata["data"]
-          
-          # 2.3: add the number of computed tokens
+                    
+          # 2.2: add the number of computed tokens
           meow_data.num_of_computed_tokens = len(computed_token_ids)
       
       return engine_inputs, meow_data

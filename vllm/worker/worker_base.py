@@ -19,9 +19,12 @@ from vllm.worker.model_runner_base import ModelRunnerBase, ModelRunnerInputBase
 logger = init_logger(__name__)
 
 from datetime import datetime
+from vllm.engine.meow_persistence_handler import MeowPersistenceHandler
 from vllm.meow_stats import MeowStats
 
 meow_stats = MeowStats()
+
+
 
 class WorkerBase(ABC):
     """Worker interface that allows vLLM to cleanly separate implementations for
@@ -310,6 +313,8 @@ class LocalOrDistributedWorkerBase(WorkerBase):
         computed_block_nums = execute_model_req.seq_group_metadata_list[0].computed_block_nums
         meow_data.should_copy_blocks = False
 
+        indexed_kv_caches = MeowPersistenceHandler.load_cache_from_disk(f"{meow_data.index_id}.data.pt").getPersistedKvCaches()["kv_cache"]
+
         start_time = datetime.now() 
 
         # Ensure computed_block_nums is a tensor and on the same device as kv_caches
@@ -318,7 +323,7 @@ class LocalOrDistributedWorkerBase(WorkerBase):
         for layer_idx in range(len(kv_caches)):
             kv_cache_layer = kv_caches[layer_idx]
             device = kv_cache_layer.device  # Get device from kv_cache_layer
-            loaded_cache_layer = meow_data.indexed_kv_caches[layer_idx].to(device, non_blocking=True)  # Move to appropriate device
+            loaded_cache_layer = indexed_kv_caches[layer_idx].to(device, non_blocking=True)  # Move to appropriate device
 
             # Use advanced indexing to copy the blocks
             kv_cache_layer.index_copy_(1, computed_blocks_tensor, loaded_cache_layer[:, :len(computed_blocks_tensor), :, :, :])
