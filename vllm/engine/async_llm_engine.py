@@ -253,8 +253,8 @@ class _AsyncLLMEngine(LLMEngine):
         is_opt_from_index_request = False
 
         if not scheduler_outputs.is_empty():
-            index_id=list(seq_group_metadata_list[0].seq_data.values())[0].get_index_id()
-            should_persist=list(seq_group_metadata_list[0].seq_data.values())[0].should_persist()
+            index_id=list(seq_group_metadata_list[0].seq_data.values())[0].get_meow_data().index_id
+            should_persist=list(seq_group_metadata_list[0].seq_data.values())[0].get_meow_data().should_index
             if (index_id and not should_persist):
               is_opt_from_index_request = True
             # Execute the model.
@@ -268,8 +268,7 @@ class _AsyncLLMEngine(LLMEngine):
                 virtual_engine=virtual_engine,
                 num_lookahead_slots=scheduler_outputs.num_lookahead_slots,
                 running_queue_size=scheduler_outputs.running_queue_size,
-                finished_requests_ids=finished_requests_ids,
-                index_id=index_id
+                finished_requests_ids=finished_requests_ids
                 )
             isPrompt=seq_group_metadata_list[0].is_prompt
             output = await self.model_executor.execute_model_async(
@@ -341,16 +340,8 @@ class _AsyncLLMEngine(LLMEngine):
                 prompt_token_ids
 
         llm_inputs = LLMInputs(prompt_token_ids=prompt_token_ids,
-                               prompt=inputs.get("prompt"),#todo meow- maybe remove i dont remember
-                               multi_modal_data=inputs.get("multi_modal_data"),
-                         indexed_prompt= inputs.get("indexed_prompt"),#todo meow- remove
-                         indexed_prompt_ids= inputs.get("indexed_prompt_ids"),#todo meow- remove
-                         new_prompt= inputs.get("new_prompt"),#todo meow- remove
-                         new_prompt_token_ids= inputs.get("new_prompt_token_ids"), #todo meow- remove
-                         num_of_computed_tokens = inputs.get("num_of_computed_tokens"),
-                         indexed_kv_cache = inputs.get("indexed_kv_cache") #todo meow- remove
-                         
-                         )
+                               prompt=inputs.get("prompt"),
+                               multi_modal_data=inputs.get("multi_modal_data"))
 
         return self.input_processor(llm_inputs)
 
@@ -655,18 +646,14 @@ class AsyncLLMEngine:
             request_outputs = await self.engine.step.remote()  # type: ignore
         else:
             request_outputs = await self.engine.step_async(virtual_engine)
-            request_outputs = await self.engine.step_async(virtual_engine)
 
         # Put the outputs into the corresponding streams.
-        finished = True
         finished = True
         for request_output in request_outputs:
             self._request_tracker.process_request_output(
                 request_output, verbose=self.log_requests)
             finished = finished and request_output.finished
-            finished = finished and request_output.finished
 
-        return not finished
         return not finished
 
     async def _engine_abort(self, request_ids: Iterable[str]):

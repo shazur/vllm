@@ -13,6 +13,7 @@ from vllm.prompt_adapter.request import PromptAdapterRequest
 from vllm.sampling_params import SamplingParams
 from vllm.sequence import SamplerOutput
 
+from vllm.inputs.data import MeowData
 
 @runtime_checkable
 class AsyncEngineClient(Protocol):
@@ -37,7 +38,8 @@ class AsyncEngineClient(Protocol):
         request_id: str,
         lora_request: Optional[LoRARequest] = None,
         trace_headers: Optional[Mapping[str, str]] = None,
-        prompt_adapter_request: Optional[PromptAdapterRequest] = None
+        prompt_adapter_request: Optional[PromptAdapterRequest] = None,
+        meow_data: Optional[MeowData] = None
     ) -> AsyncIterator[RequestOutput]:
         """Generates outputs for a request"""
 

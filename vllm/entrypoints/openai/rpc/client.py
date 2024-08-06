@@ -17,6 +17,7 @@ from vllm.outputs import EmbeddingRequestOutput, RequestOutput
 from vllm.prompt_adapter.request import PromptAdapterRequest
 from vllm.sampling_params import SamplingParams
 from vllm.transformers_utils.tokenizer_group import init_tokenizer_from_configs
+from vllm.inputs.data import MeowData
 
 
 class AsyncEngineRPCClient:
@@ -189,7 +190,8 @@ class AsyncEngineRPCClient:
         request_id: str,
         lora_request: Optional[LoRARequest] = None,
         trace_headers: Optional[Mapping[str, str]] = None,
-        prompt_adapter_request: Optional[PromptAdapterRequest] = None
+        prompt_adapter_request: Optional[PromptAdapterRequest] = None,
+        meow_data: Optional[MeowData] = None,
     ) -> AsyncIterator[RequestOutput]:
         """Send an RPCGenerateRequest to the RPCServer and stream responses."""
 
@@ -204,7 +206,8 @@ class AsyncEngineRPCClient:
                         request_id=request_id,
                         lora_request=lora_request,
                         trace_headers=trace_headers,
-                        prompt_adapter_request=prompt_adapter_request))
+                        prompt_adapter_request=prompt_adapter_request,
+                        meow_data=meow_data))
             ])
 
             # Stream back the results from the RPC Server.

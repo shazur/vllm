@@ -131,3 +131,4 @@ class MeowData:
     indexed_kv_caches: Optional[List[torch.Tensor]] = field(default=None)
     num_of_computed_tokens: Optional[int] = field(default=0)
     should_copy_blocks: Optional[bool] = field(default=None)
+    eos_token: Optional[int] = field(default=None)

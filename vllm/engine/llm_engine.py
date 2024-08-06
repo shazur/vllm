@@ -43,9 +43,14 @@ from vllm.transformers_utils.tokenizer_group import (
 from vllm.usage.usage_lib import (UsageContext, is_usage_stats_enabled,
                                   usage_message)
 from vllm.utils import Counter
+from vllm.version import __version__ as VLLM_VERSION
+
 from datetime import datetime
 
+from vllm.inputs.data import MeowData
+
 from vllm.meow_stats import MeowStats
+import torch
 
 meow_stats = MeowStats()
 
@@ -524,6 +529,8 @@ class LLMEngine:
         lora_request: Optional[LoRARequest],
         prompt_adapter_request: Optional[PromptAdapterRequest],
         trace_headers: Optional[Mapping[str, str]] = None,
+        meow_data: Optional[MeowData] = None,
+
     ) -> None:
         # Create the sequences.
         block_size = self.cache_config.block_size
@@ -531,7 +538,7 @@ class LLMEngine:
         eos_token_id = self._get_eos_token_id(lora_request)
 
         seq = Sequence(seq_id, processed_inputs, block_size, eos_token_id,
-                       lora_request, prompt_adapter_request)
+                       lora_request, prompt_adapter_request, meow_data=meow_data)
 
         # Create a SequenceGroup based on SamplingParams or PoolingParams
         if isinstance(params, SamplingParams):
@@ -542,7 +549,8 @@ class LLMEngine:
                 arrival_time=arrival_time,
                 lora_request=lora_request,
                 trace_headers=trace_headers,
-                prompt_adapter_request=prompt_adapter_request)
+                prompt_adapter_request=prompt_adapter_request
+                )
         elif isinstance(params, PoolingParams):
             seq_group = self._create_sequence_group_with_pooling(
                 request_id,
@@ -679,7 +687,7 @@ class LLMEngine:
         arrival_time: float,
         lora_request: Optional[LoRARequest],
         trace_headers: Optional[Mapping[str, str]] = None,
-        prompt_adapter_request: Optional[PromptAdapterRequest] = None,
+        prompt_adapter_request: Optional[PromptAdapterRequest] = None
     ) -> SequenceGroup:
         """Creates a SequenceGroup with SamplingParams."""
         max_logprobs = self.get_model_config().max_logprobs
@@ -716,7 +724,7 @@ class LLMEngine:
         pooling_params: PoolingParams,
         arrival_time: float,
         lora_request: Optional[LoRARequest],
-        prompt_adapter_request: Optional[PromptAdapterRequest],
+        prompt_adapter_request: Optional[PromptAdapterRequest]
     ) -> SequenceGroup:
         """Creates a SequenceGroup with PoolingParams."""
         # Defensive copy of PoolingParams, which are used by the pooler
@@ -728,7 +736,8 @@ class LLMEngine:
             arrival_time=arrival_time,
             lora_request=lora_request,
             pooling_params=pooling_params,
-            prompt_adapter_request=prompt_adapter_request)
+            prompt_adapter_request=prompt_adapter_request,
+            meow_data=meow_data)
         return seq_group
 
     def abort_request(self, request_id: Union[str, Iterable[str]]) -> None:
@@ -856,16 +865,15 @@ class LLMEngine:
     def _meow_handle_persisting_cache(self, seq_group_meta,output: MeowSamplerOutput):
         logger.info(f"_process_model_outputs: request finished exact_time: {datetime.now().strftime('%Y-%m-%d %H:%M:%S.%f')[:-3]}")
         seq_data = list(seq_group_meta.seq_data.values())[0]
-        index_id = seq_data.get_index_id()
-        should_persist = seq_data.should_persist()
+        meow_data = seq_data.get_meow_data()
 
-        if should_persist and index_id is not None:         
+        if meow_data.should_index and meow_data.index_id is not None:         
           #get relevant blocks to save
           blocks = list(seq_group_meta.block_tables.values())[0]  
           
-          persistent_kv_caches = PersistentKVCacheDict(index_id, output.kv_caches, blocks, seq_data.inputs['prompt_token_ids'])
+          persistent_kv_caches = PersistentKVCacheDict(meow_data.index_id, output.kv_caches, blocks, seq_data.inputs['prompt_token_ids'],meow_data.eos_token)
           #write kv_caches to disk - TODO: should be async
-          torch.save(persistent_kv_caches.getKvCaches(), index_id + ".pt")  #todo: filename should be index_id
+          torch.save(persistent_kv_caches.getKvCaches(), meow_data.index_id + ".pt")  #todo: filename should be index_id
           print("meow request finished!!!")
 
     def step(self) -> List[Union[RequestOutput, EmbeddingRequestOutput]]:
@@ -1236,60 +1244,61 @@ class LLMEngine:
                 SpanAttributes.LLM_LATENCY_TIME_TO_FIRST_TOKEN, ttft)
             seq_span.set_attribute(SpanAttributes.LLM_LATENCY_E2E, e2e_time)
 
-    class KVCacheMetadata(TypedDict):
-        data: List[Any]
-        num_of_computed_tokens: int
-        prompt: str
+class KVCacheMetadata(TypedDict):
+    data: List[Any]
+    num_of_computed_tokens: int
+    prompt: str
 
-    class PersistentKVCacheDict:
-        def __init__(self, index_id, kv_caches, blocks, computed_token_ids):
-            self.dict = {index_id: KVCacheMetadata({
-                "computed_token_ids": computed_token_ids,
-                "data": self._select_blocks(kv_caches, blocks)}
-                )}
-        def getKvCaches(self):
-            return self.dict
+class PersistentKVCacheDict:
+    def __init__(self, index_id, kv_caches, blocks, computed_token_ids, eos_token: int):
+        self.dict = {index_id: KVCacheMetadata({
+            "computed_token_ids": computed_token_ids,
+            "data": self._select_blocks(kv_caches, blocks),
+            "eos_token": eos_token}
+            )}
+    def getKvCaches(self):
+        return self.dict
 
-        def _select_blocks(self, tensor_list, indices):
-            # Convert indices to a tensor if it's not already
-            if not isinstance(indices, torch.Tensor):
-                indices = torch.tensor(indices)
-            
-            # Ensure indices is 1D
-            indices = indices.squeeze()
-            
-            # Get the value of x from the indices
-            x = indices.size(0)
-            
-            results = []
-            for tensor in tensor_list:
-                # Select the indices from the second dimension of the tensor
-                result = tensor[:, indices, :, :, :]
-                
-                # Ensure the output shape is correct
-                assert result.shape == (2, x, 16, 8, 128), f"Unexpected shape: {result.shape}"
-                
-                results.append(result)
+    def _select_blocks(self, tensor_list, indices):
+        # Convert indices to a tensor if it's not already
+        if not isinstance(indices, torch.Tensor):
+            indices = torch.tensor(indices)
         
-            return results
+        # Ensure indices is 1D
+        indices = indices.squeeze()
         
-        @classmethod
-        def load_from_disk(cls, filepath):
-            start_time = datetime.now() 
-            # Load the dictionary from disk
-            loaded_dict = torch.load(filepath, mmap=True, map_location='cpu') #todo meow- go back to gpu, this is slow
+        # Get the value of x from the indices
+        x = indices.size(0)
+        
+        results = []
+        for tensor in tensor_list:
+            # Select the indices from the second dimension of the tensor
+            result = tensor[:, indices, :, :, :]
             
-            # Create an instance of the class
-            instance = cls.__new__(cls)
+            # Ensure the output shape is correct
+            assert result.shape == (2, x, 16, 8, 128), f"Unexpected shape: {result.shape}"
             
-            # Directly set the dict attribute
-            instance.dict = loaded_dict
-            
-            duration = (datetime.now() - start_time).total_seconds()
+            results.append(result)
+    
+        return results
+    
+    @classmethod
+    def load_from_disk(cls, filepath):
+        start_time = datetime.now() 
+        # Load the dictionary from disk
+        loaded_dict = torch.load(filepath, mmap=True, map_location='cpu') #todo meow- go back to gpu, this is slow
+        
+        # Create an instance of the class
+        instance = cls.__new__(cls)
+        
+        # Directly set the dict attribute
+        instance.dict = loaded_dict
+        
+        duration = (datetime.now() - start_time).total_seconds()
 
-            #todo: add stats per MB \ per loaded block
-            meow_stats.add_operation_duration("load_cache_from_disk", duration) 
+        #todo: add stats per MB \ per loaded block
+        meow_stats.add_operation_duration("load_cache_from_disk", duration) 
 
-            print(f"loading cache from disk took: {duration} seconds. exact_time: {datetime.now().strftime('%Y-%m-%d %H:%M:%S.%f')[:-3]}")
+        print(f"loading cache from disk took: {duration} seconds. exact_time: {datetime.now().strftime('%Y-%m-%d %H:%M:%S.%f')[:-3]}")
 
-            return instance
+        return instance

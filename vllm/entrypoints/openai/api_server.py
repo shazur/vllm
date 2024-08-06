@@ -3,6 +3,7 @@ import importlib
 import inspect
 import re
 import signal
+import uvicorn
 from argparse import Namespace
 from contextlib import asynccontextmanager
 from http import HTTPStatus
@@ -144,7 +145,7 @@ async def build_async_engine_client(args) -> AsyncIterator[AsyncEngineClient]:
 router = APIRouter()
 
 
-def mount_metrics(app: fastapi.FastAPI):
+def mount_metrics(app: FastAPI):
     # Add prometheus asgi middleware to route /metrics requests
     metrics_route = Mount("/metrics", make_asgi_app())
     # Workaround for 307 Redirect for /metrics
@@ -274,7 +275,7 @@ async def create_embedding(request: EmbeddingRequest, raw_request: Request):
 
 
 def build_app(args):
-    app = fastapi.FastAPI(lifespan=lifespan)
+    app = FastAPI(lifespan=lifespan)
     app.include_router(router)
     app.root_path = args.root_path
 

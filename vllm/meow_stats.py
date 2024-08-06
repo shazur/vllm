@@ -11,8 +11,6 @@ class MeowStats:
         if cls._instance is None:
             cls._instance = super(MeowStats, cls).__new__(cls)
             cls._instance._init_stats()
-            # Start the logging thread
-            threading.Thread(target=cls._instance._log_stats_periodically, daemon=True).start()
         return cls._instance
 
     def _init_stats(self):
@@ -97,37 +95,36 @@ class MeowStats:
     def get_regular_inference_stats(self):
         return self.get_stats('inference_phase', False)
 
-    def _log_stats_periodically(self):
-        while True:
-            index_prompt_stats = self.get_index_prompt_stats()
-            regular_prompt_stats = self.get_regular_prompt_stats()
-            index_inference_stats = self.get_index_inference_stats()
-            regular_inference_stats = self.get_regular_inference_stats()
+    def log_stats(self):
+        index_prompt_stats = self.get_index_prompt_stats()
+        regular_prompt_stats = self.get_regular_prompt_stats()
+        index_inference_stats = self.get_index_inference_stats()
+        regular_inference_stats = self.get_regular_inference_stats()
 
-            log_message = ""
+        log_message = ""
 
-            if any(stat['total_time'] > 0 or stat['total_tokens'] > 0 for stat in [index_prompt_stats, regular_prompt_stats, index_inference_stats, regular_inference_stats]):
+        if any(stat['total_time'] > 0 or stat['total_tokens'] > 0 for stat in [index_prompt_stats, regular_prompt_stats, index_inference_stats, regular_inference_stats]):
+            log_message += (
+                "------------------------------------------------------------------------\n"
+                "Opt indexed request:\n"
+                f"  Prompt: secs/token={index_prompt_stats['time_per_token']}, tokens/second={index_prompt_stats['tokens_per_second']}, avg_prompt_length={index_prompt_stats['average_prompt_length']}, combined_tokens/second={index_prompt_stats['combined_tokens_per_second']}\n"
+                f"  Inference: secs/token={index_inference_stats['time_per_token']}, tokens/second={index_inference_stats['tokens_per_second']}\n"
+                "Regular request:\n"
+                f"  Prompt: secs/token={regular_prompt_stats['time_per_token']}, tokens/second={regular_prompt_stats['tokens_per_second']}, avg_prompt_length={regular_prompt_stats['average_prompt_length']}\n"
+                f"  Inference: secs/token={regular_inference_stats['time_per_token']}, tokens/second={regular_inference_stats['tokens_per_second']}\n"
+                "------------------------------------------------------------------------\n"
+            )
+
+        for operation_name, operation_stats in self.stats['operations'].items():
+            if operation_stats['count'] > 0:
+                duration_stats = self.get_operation_stats(operation_name)
                 log_message += (
-                    "------------------------------------------------------------------------\n"
-                    "Opt indexed request:\n"
-                    f"  Prompt: secs/token={index_prompt_stats['time_per_token']}, tokens/second={index_prompt_stats['tokens_per_second']}, avg_prompt_length={index_prompt_stats['average_prompt_length']}, combined_tokens/second={index_prompt_stats['combined_tokens_per_second']}\n"
-                    f"  Inference: secs/token={index_inference_stats['time_per_token']}, tokens/second={index_inference_stats['tokens_per_second']}\n"
-                    "Regular request:\n"
-                    f"  Prompt: secs/token={regular_prompt_stats['time_per_token']}, tokens/second={regular_prompt_stats['tokens_per_second']}, avg_prompt_length={regular_prompt_stats['average_prompt_length']}\n"
-                    f"  Inference: secs/token={regular_inference_stats['time_per_token']}, tokens/second={regular_inference_stats['tokens_per_second']}\n"
-                    "------------------------------------------------------------------------\n"
+                    f"{operation_name}:\n"
+                    f"  min_duration={duration_stats['min_duration']}, max_duration={duration_stats['max_duration']}, average_duration={duration_stats['average_duration']}\n"
                 )
 
-            for operation_name, operation_stats in self.stats['operations'].items():
-                if operation_stats['count'] > 0:
-                    duration_stats = self.get_operation_stats(operation_name)
-                    log_message += (
-                        f"{operation_name}:\n"
-                        f"  min_duration={duration_stats['min_duration']}, max_duration={duration_stats['max_duration']}, average_duration={duration_stats['average_duration']}\n"
-                    )
+        if log_message:
+            log_message += "------------------------------------------------------------------------\n"
+            logger.info(log_message.strip())
 
-            if log_message:
-                log_message += "------------------------------------------------------------------------\n"
-                logger.info(log_message.strip())
 
-            time.sleep(10)

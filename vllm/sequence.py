@@ -124,7 +124,6 @@ class SequenceData:
         output_token_ids: Optional[List[int]] = None,
         meow_data: Optional[MeowData] = None,
         inputs: Optional["LLMInputs"] = None,
-        cache_already_copied: bool = False # todo meow
     ) -> None:
         self._prompt_token_ids = array('l', prompt_token_ids)
         self._prompt_token_ids_tuple: Tuple[int, ...] = tuple(prompt_token_ids)
@@ -137,7 +136,6 @@ class SequenceData:
         # The number of tokens that are computed (that run against the model).
         self._num_computed_tokens = 0
         self._stage: SequenceStage = SequenceStage.PREFILL
-        self.cache_already_copied = False
         self._update_cached_all_tokens()
 
     def _update_cached_all_tokens(self):
@@ -189,12 +187,9 @@ class SequenceData:
     def get_token_ids(self) -> List[int]:
         return self._cached_all_token_ids
 
-    def get_index_id(self) -> str:
-        return self.meow_data.index_id #todo meow - just return the meow data? 
+    def get_meow_data(self) -> str:
+        return self.meow_data
     
-    def should_persist(self) -> bool:
-        return self.meow_data.should_index #todo meow - just return the meow data? 
-
     def get_prefix_token_ids(
             self, num_tokens: int
     ) -> Tuple[Tuple[int, ...], Optional[Tuple[int, ...]]]:
@@ -703,7 +698,6 @@ class SequenceGroupMetadata:
         self.cross_block_table = cross_block_table
         self._token_chunk_size = token_chunk_size
         self.do_sample = do_sample
-        self.prompt = prompt
 
         # The number of speculative tokens adopted in this request.
         # None means specuative decoding is not used.

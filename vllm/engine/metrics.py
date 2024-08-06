@@ -26,6 +26,9 @@ prometheus_client.disable_created_metrics()
 # The begin-* and end* here are used by the documentation generator
 # to extract the metrics definitions.
 
+from vllm.meow_stats import MeowStats
+
+meow_stats = MeowStats()
 
 # begin-metrics-definitions
 class Metrics:
@@ -428,6 +431,8 @@ class LoggingStatLogger(StatLoggerBase):
             self.num_generation_tokens = []
             self.last_local_log = stats.now
             self.spec_decode_metrics = None
+
+            meow_stats.log_stats()
 
     def _format_spec_decode_metrics_str(
             self, metrics: "SpecDecodeWorkerMetrics") -> str:

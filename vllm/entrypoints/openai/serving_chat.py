@@ -179,6 +179,7 @@ class OpenAIServingChat(OpenAIServing):
                 lora_request=lora_request,
                 trace_headers=trace_headers,
                 prompt_adapter_request=prompt_adapter_request,
+                meow_data=meow_data
             )
         except ValueError as e:
             # TODO: Use a vllm-specific Validation Error
@@ -205,11 +206,13 @@ class OpenAIServingChat(OpenAIServing):
       meow_data.should_index = request.should_index
       
       if request.should_index:  # 1. index request - add padding to prompt ids.
-          engine_inputs["prompt_token_ids"] = self.pad_prompt_ids_to_fit_block_size(
-              engine_inputs["prompt_token_ids"], 
-              tokenizer,
-              self.engine.engine.cache_config.block_size
-          )
+          # remove the EOS token because we don't want the model to think the sequence ends here, as this is just a partial prompt:
+          meow_data.eos_token = engine_inputs["prompt_token_ids"].pop()
+          # engine_inputs["prompt_token_ids"] = self.pad_prompt_ids_to_fit_block_size(
+          #     engine_inputs["prompt_token_ids"], 
+          #     tokenizer,
+          #     16
+          # )
       elif request.index_id:  # 2. opt request 
           assert len(request.messages) == 1  # we only support 1 message for opt requests
           cached_request_dict = PersistentKVCacheDict.load_from_disk(f"{request.index_id}.pt").getKvCaches()
@@ -222,8 +225,11 @@ class OpenAIServingChat(OpenAIServing):
               add_special_tokens=False
           ).input_ids
           
+          # we saved the eos token to add to the now completed prompt! (don't need to add it to meow_data but maybe it can stay there for now just in case!)
+          meow_data.eos_token = cached_request_metadata["eos_token"]
+
           # 2.1: add the new prompt ids aka "question" to the indexed promptids
-          engine_inputs["prompt_token_ids"] = computed_token_ids[:-1] + no_special_tokens_new_prompt_token_ids + computed_token_ids[-1:]
+          engine_inputs["prompt_token_ids"] = computed_token_ids + no_special_tokens_new_prompt_token_ids + [meow_data.eos_token]
           
           # 2.2: add the loaded cache
           meow_data.indexed_kv_caches = cached_request_metadata["data"]
