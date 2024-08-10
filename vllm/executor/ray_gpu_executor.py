@@ -229,7 +229,6 @@ class RayGPUExecutor(DistributedGPUExecutor):
         distributed_init_method = get_distributed_init_method(
             driver_ip, get_open_port())
 
-
         # Initialize the actual workers inside worker wrapper.
         init_worker_all_kwargs = [
             self._get_worker_kwargs(
