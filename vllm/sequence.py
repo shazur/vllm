@@ -168,7 +168,6 @@ class SequenceData:
     @property
     def output_token_ids_array(self) -> array:
         return self._output_token_ids
-
     
     def append_token_id(self, token_id: int, logprob: float) -> None:
         self._output_token_ids.append(token_id)

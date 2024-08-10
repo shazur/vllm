@@ -973,7 +973,6 @@ class Scheduler:
                 self.block_manager.get_common_computed_block_ids(
                     seq_group.get_seqs(status=SequenceStatus.RUNNING)))
 
-
             do_sample = True
             if seq_group.is_prefill():
                 seqs = seq_group.get_seqs()
