@@ -453,21 +453,6 @@ class SamplingTensors:
                         prompt_tokens.append(seq_data.prompt_token_ids_array)
                         output_tokens.append(seq_data.output_token_ids_array)
 
-        if do_penalties:
-            for seq_group in sampling_metadata.seq_groups:
-                seq_ids = seq_group.seq_ids
-                if (seq_group.is_prompt
-                        and sampling_params.prompt_logprobs is not None):
-                    prefill_len = len(seq_group.prompt_logprob_indices)
-                    prompt_tokens.extend(
-                        array('l') for _ in range(prefill_len))
-                    output_tokens.extend(
-                        array('l') for _ in range(prefill_len))
-                if seq_group.do_sample:
-                    for seq_id in seq_ids:
-                        seq_data = seq_group.seq_data[seq_id]
-                        prompt_tokens.append(seq_data.prompt_token_ids_array)
-                        output_tokens.append(seq_data.output_token_ids_array)
 
         sampling_tensors = SamplingTensors.from_lists(
             temperatures, top_ps, top_ks, min_ps, presence_penalties,

@@ -5,7 +5,6 @@ from http import HTTPStatus
 from typing import Iterable, Iterator, List, Optional, Tuple, TypedDict, Union
 
 from pydantic import Field
-from transformers import PreTrainedTokenizer, PreTrainedTokenizerFast
 from typing_extensions import Annotated
 
 from vllm.config import ModelConfig

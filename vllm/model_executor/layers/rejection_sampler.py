@@ -125,8 +125,6 @@ class RejectionSampler(SpecDecodeStochasticBaseSampler):
         recovered_probs = self._get_recovered_probs(
             target_probs, draft_probs).reshape(batch_size * k, vocab_size)
 
-        seed_indices, non_seed_indices = self._split_batch_by_seeded(
-            generators, k=k)
 
         # NOTE: the recovered_probs are overwritten by this method.
         recovered_token_ids = _multinomial(

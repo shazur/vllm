@@ -263,8 +263,7 @@ class _AsyncLLMEngine(LLMEngine):
                 virtual_engine=virtual_engine,
                 num_lookahead_slots=scheduler_outputs.num_lookahead_slots,
                 running_queue_size=scheduler_outputs.running_queue_size,
-                finished_requests_ids=finished_requests_ids
-                )
+                finished_requests_ids=finished_requests_ids)
             #meow load memory 
             await self.meow_load_caches(seq_group_metadata_list)
             # end meow change

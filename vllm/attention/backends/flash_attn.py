@@ -553,7 +553,7 @@ class FlashAttentionImpl(AttentionImpl):
 
         if decode_meta := attn_metadata.decode_metadata:
             # Decoding run.
-             output[num_prefill_tokens:] = flash_attn_with_kvcache(
+            output[num_prefill_tokens:] = flash_attn_with_kvcache(
                 decode_query.unsqueeze(1),
                 key_cache,
                 value_cache,

@@ -1,4 +1,4 @@
-# This vLLM Dockerfile is used to construct image that can build and run vLLM on x86 CPU platform.
+i# This vLLM Dockerfile is used to construct image that can build and run vLLM on x86 CPU platform.
 
 FROM ubuntu:22.04 AS cpu-test-1
 
@@ -27,10 +27,6 @@ COPY ./ /workspace/vllm
 WORKDIR /workspace/vllm
 
 RUN pip install -v -r requirements-cpu.txt --extra-index-url https://download.pytorch.org/whl/test/cpu
-
-# Support for building with non-AVX512 vLLM: docker build --build-arg VLLM_CPU_DISABLE_AVX512="true" ...
-ARG VLLM_CPU_DISABLE_AVX512
-ENV VLLM_CPU_DISABLE_AVX512=${VLLM_CPU_DISABLE_AVX512}
 
 # Support for building with non-AVX512 vLLM: docker build --build-arg VLLM_CPU_DISABLE_AVX512="true" ...
 ARG VLLM_CPU_DISABLE_AVX512

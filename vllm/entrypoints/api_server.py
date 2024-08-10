@@ -5,11 +5,12 @@ For production use, we recommend using our OpenAI compatible server.
 We are also not going to accept PRs modifying this file, please
 change `vllm/entrypoints/openai/api_server.py` instead.
 """
+
 import json
 import ssl
-from argparse import Namespace
-from typing import Any, AsyncGenerator, Optional
+from typing import AsyncGenerator
 
+import uvicorn
 from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse, Response, StreamingResponse
 
@@ -19,7 +20,7 @@ from vllm.logger import init_logger
 from vllm.sampling_params import SamplingParams
 from vllm.server import serve_http
 from vllm.usage.usage_lib import UsageContext
-from vllm.utils import FlexibleArgumentParser, FlexibleArgumentParser, random_uuid
+from vllm.utils import FlexibleArgumentParser, random_uuid
 from vllm.version import __version__ as VLLM_VERSION
 
 logger = init_logger("vllm.entrypoints.api_server")
@@ -80,50 +81,6 @@ async def generate(request: Request) -> Response:
     text_outputs = [prompt + output.text for output in final_output.outputs]
     ret = {"text": text_outputs}
     return JSONResponse(ret)
-
-
-def build_app(args: Namespace) -> FastAPI:
-    global app
-
-    app.root_path = args.root_path
-    return app
-
-
-async def init_app(
-    args: Namespace,
-    llm_engine: Optional[AsyncLLMEngine] = None,
-) -> FastAPI:
-    app = build_app(args)
-
-    global engine
-
-    engine_args = AsyncEngineArgs.from_cli_args(args)
-    engine = (llm_engine
-              if llm_engine is not None else AsyncLLMEngine.from_engine_args(
-                  engine_args, usage_context=UsageContext.API_SERVER))
-
-    return app
-
-
-async def run_server(args: Namespace,
-                     llm_engine: Optional[AsyncLLMEngine] = None,
-                     **uvicorn_kwargs: Any) -> None:
-    logger.info("vLLM API server version %s", VLLM_VERSION)
-    logger.info("args: %s", args)
-
-    app = await init_app(args, llm_engine)
-    await serve_http(
-        app,
-        host=args.host,
-        port=args.port,
-        log_level=args.log_level,
-        timeout_keep_alive=TIMEOUT_KEEP_ALIVE,
-        ssl_keyfile=args.ssl_keyfile,
-        ssl_certfile=args.ssl_certfile,
-        ssl_ca_certs=args.ssl_ca_certs,
-        ssl_cert_reqs=args.ssl_cert_reqs,
-        **uvicorn_kwargs,
-    )
 
 
 if __name__ == "__main__":

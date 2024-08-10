@@ -21,7 +21,7 @@ class TokenizerGroup(BaseTokenizerGroup):
         self.max_input_length = max_input_length
         self.tokenizer = get_tokenizer(self.tokenizer_id, **tokenizer_config)
         self.lora_tokenizers = LRUCache[AnyTokenizer](
-            capacity=max_num_seqs) if enable_lora else None
+            capacity=max_num_seqs if enable_lora else 0)
         
     @classmethod
     def from_config(cls, tokenizer_pool_config: Optional[TokenizerPoolConfig],

@@ -221,7 +221,6 @@ def test_gptq_marlin_gemm(
 
     marlin_zp = marlin_make_empty_g_idx(marlin_s.device)
 
-
     workspace = MarlinWorkspace(size_n, GPTQ_MARLIN_MIN_THREAD_N,
                                 GPTQ_MARLIN_MAX_PARALLEL)
 

@@ -60,7 +60,6 @@ def bench_run(results: List[benchmark.Measurement], model: str,
 
     marlin_zp = torch.empty(0, dtype=torch.int, device=b.device)
 
-
     # GPTQ quant
     (w_ref, q_w, s, g_idx,
      rand_perm) = gptq_quantize_weights(b, quant_type, group_size, act_order)

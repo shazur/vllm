@@ -1,5 +1,4 @@
 import dataclasses
-import dataclasses
 import gc
 import time
 import warnings
@@ -10,7 +9,6 @@ from typing import (TYPE_CHECKING, Any, Dict, List, Mapping, Optional, Set,
 
 import numpy as np
 import torch
-import torch.distributed
 import torch.distributed
 import torch.nn as nn
 
@@ -44,15 +42,6 @@ from vllm.model_executor.models.interfaces import (supports_lora,
                                                    supports_vision)
 from vllm.model_executor.models.utils import set_cpu_offload_max_bytes
 from vllm.multimodal import (MULTIMODAL_REGISTRY, BatchedTensorInputs,
-                             MultiModalInputs)
-from vllm.prompt_adapter.layers import PromptAdapterMapping
-from vllm.prompt_adapter.request import PromptAdapterRequest
-from vllm.prompt_adapter.worker_manager import (
-    LRUCacheWorkerPromptAdapterManager)
-from vllm.model_executor.models.interfaces import (supports_lora,
-                                                   supports_vision)
-from vllm.model_executor.models.utils import set_cpu_offload_max_bytes
-from vllm.multimodal import (MULTIMODAL_REGISTRY, BatchedTensors,
                              MultiModalInputs)
 from vllm.prompt_adapter.layers import PromptAdapterMapping
 from vllm.prompt_adapter.request import PromptAdapterRequest

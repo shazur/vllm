@@ -229,7 +229,6 @@ class RayGPUExecutor(DistributedGPUExecutor):
         distributed_init_method = get_distributed_init_method(
             driver_ip, get_open_port())
 
-        error_on_invalid_device_count_status()
 
         # Initialize the actual workers inside worker wrapper.
         init_worker_all_kwargs = [
@@ -237,8 +236,7 @@ class RayGPUExecutor(DistributedGPUExecutor):
                 local_rank=node_workers[node_id].index(rank),
                 rank=rank,
                 distributed_init_method=distributed_init_method,
-            ) for rank, (node_id,
-                         _) in zip(worker_ranks, worker_node_and_gpu_ids)
+            ) for rank, (node_id, _) in enumerate(worker_node_and_gpu_ids)
         ]
         self._run_workers("init_worker", all_kwargs=init_worker_all_kwargs)
 

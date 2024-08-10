@@ -341,3 +341,4 @@ class RowParallelLinearWithShardedLoRA(RowParallelLinearWithLoRA):
             model_config=model_config,
             decorate=False,
         )
+    

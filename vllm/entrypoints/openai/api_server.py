@@ -3,15 +3,15 @@ import importlib
 import inspect
 import re
 import signal
-import uvicorn
-from argparse import Namespace
 from contextlib import asynccontextmanager
 from http import HTTPStatus
 from multiprocessing import Process
-from typing import Any, AsyncIterator, Set
+from typing import AsyncIterator, Set
 from datetime import datetime
 
-from fastapi import APIRouter, FastAPI, Request
+import fastapi
+import uvicorn
+from fastapi import APIRouter, Request
 from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse, Response, StreamingResponse
@@ -81,7 +81,7 @@ def model_is_embedding(model_name: str) -> bool:
 
 
 @asynccontextmanager
-async def lifespan(app: FastAPI):
+async def lifespan(app: fastapi.FastAPI):
 
     async def _force_log():
         while True:
@@ -145,7 +145,7 @@ async def build_async_engine_client(args) -> AsyncIterator[AsyncEngineClient]:
 router = APIRouter()
 
 
-def mount_metrics(app: FastAPI):
+def mount_metrics(app: fastapi.FastAPI):
     # Add prometheus asgi middleware to route /metrics requests
     metrics_route = Mount("/metrics", make_asgi_app())
     # Workaround for 307 Redirect for /metrics
@@ -275,7 +275,7 @@ async def create_embedding(request: EmbeddingRequest, raw_request: Request):
 
 
 def build_app(args):
-    app = FastAPI(lifespan=lifespan)
+    app = fastapi.FastAPI(lifespan=lifespan)
     app.include_router(router)
     app.root_path = args.root_path
 

@@ -103,7 +103,6 @@ def test_can_deserialize_s3(vllm_runner):
 @pytest.mark.skipif(not is_curl_installed(), reason="cURL is not installed")
 def test_deserialized_encrypted_vllm_model_has_same_outputs(
         vllm_runner, tmp_path):
-    cleanup()
     with vllm_runner(model_ref) as vllm_model:
         model_path = tmp_path / (model_ref + ".tensors")
         key_path = tmp_path / (model_ref + ".key")

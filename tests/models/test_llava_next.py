@@ -1,7 +1,7 @@
 from typing import List, Optional, Tuple, Type, overload
 
 import pytest
-from transformers import AutoConfig, AutoTokenizer
+from transformers import AutoTokenizer
 
 from vllm.multimodal.utils import rescale_image_size
 from vllm.sequence import SampleLogprobs
