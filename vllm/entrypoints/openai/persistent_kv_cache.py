@@ -58,9 +58,9 @@ class PersistentKvCache():
             max_tokens=1)
         )
         if isinstance(output, ErrorResponse):
-            return None
+            return None, output
         # print("result is:" + output.usage.completion_tokens)
-        return index_id
+        return index_id, output
     
     async def create_chat_opt_completion(self, request: OptimizedCompletionRequest):
         return await self.openai_serving_chat.create_chat_completion(request)

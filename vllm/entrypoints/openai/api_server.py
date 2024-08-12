@@ -237,9 +237,9 @@ async def create_chat_opt_completion(request: OptimizedCompletionRequest, raw_re
 #this is our endpoint    
 @router.post("/index")
 async def index_context(request: IndexContextRequest, raw_request: Request):
-    maybe_index_id = await persistent_kv_cache.populate(request)
+    maybe_index_id, generator = await persistent_kv_cache.populate(request)
     if maybe_index_id is None:
-        return JSONResponse(content=maybe_index_id.model_dump(), status_code=maybe_index_id.code)
+        return JSONResponse(content=generator.model_dump(), status_code=generator   .code)
     else:
         return JSONResponse(content=jsonable_encoder({"indexId": maybe_index_id}))
 

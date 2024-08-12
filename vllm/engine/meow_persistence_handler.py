@@ -1,10 +1,25 @@
 import torch
 from datetime import datetime
-from typing import (Any, List, TypedDict)
+from typing import (Any, List, TypedDict, Dict)
+import asyncio
+from concurrent.futures import ThreadPoolExecutor
+from vllm.utils import singleton
 
 from vllm.meow_stats import MeowStats
+from vllm.logger import init_logger
+
+logger = init_logger(__name__)
 
 meow_stats = MeowStats()
+
+async def async_torch_load(filepath: str, map_location: str = 'cpu'):
+    loop = asyncio.get_event_loop()
+    with ThreadPoolExecutor() as pool:
+        loaded_from_disk_cache = await loop.run_in_executor(
+            pool,
+            lambda: torch.load(filepath, map_location=map_location)
+        )
+    return loaded_from_disk_cache
 
 class MeowPersistedKVCaches(TypedDict):
     kv_cache: List[Any]
@@ -14,26 +29,27 @@ class MeowPersistedMetadata(TypedDict):
     eos_token: int
     index_id: str
 
+@singleton
 class MeowPersistenceHandler:
-    def __init__(self, index_id, kv_caches, blocks, computed_token_ids, eos_token: int):
-        
-        self.persistedKVCache = MeowPersistedKVCaches({
+    meow_cache_dict: Dict[str, MeowPersistedKVCaches] = {}
+    def __init__(self):
+       pass 
+      
+    def persistCache(self, index_id, kv_caches, blocks, computed_token_ids, eos_token: int):
+        persistedKVCache = MeowPersistedKVCaches({
             "kv_cache": self._select_blocks(kv_caches, blocks)
             })
-        self.persistedMetadata = MeowPersistedMetadata({
+        persistedMetadata = MeowPersistedMetadata({
             "computed_token_ids": computed_token_ids,
             "index_id": index_id,
             "eos_token": eos_token
         })
-    
-    def writeToDisk(self, index_id):
-        #write kv_caches and metadata to disk -
-        # meow TODO meow: should be async, and check that the dictionaries are not empty and such
-        torch.save(self.persistedKVCache, index_id + ".data.pt") 
-        torch.save(self.persistedMetadata, index_id + ".metadata.pt") 
+        self.meow_cache_dict[index_id] = persistedKVCache
+        torch.save(persistedKVCache, index_id + ".data.pt") 
+        torch.save(persistedMetadata, index_id + ".metadata.pt")
 
-    def getPersistedKvCaches(self):
-        return self.persistedKVCache
+    def getPersistedKvCaches(self, index_id): #make sure to load it form disk first(using async)
+        return self.meow_cache_dict.get(index_id)
     def getPersistedMetadata(self):
         return self.persistedMetadata
 
@@ -60,35 +76,27 @@ class MeowPersistenceHandler:
     
         return results
     
-    @classmethod
-    def load_cache_from_disk(cls, filepath):
-        start_time = datetime.now() 
+    async def load_cache(self, index_id):
+        start_time = datetime.now()
+        if not self.meow_cache_dict.get(index_id):
+          filepath = f"{index_id}.data.pt" 
+          # Load the dictionary from disk
+          #loaded_dict = torch.load(filepath, mmap=True, map_location='cpu') #nmap - doesnt load until in use
+          cache = await async_torch_load(filepath, map_location='cpu')
+          
+          self.meow_cache_dict[index_id] = cache
+          
+          duration = (datetime.now() - start_time).total_seconds()
+          #todo: add stats per MB \ per loaded block
+          meow_stats.add_operation_duration("load_cache_from_disk", duration) 
+
+          logger.info(f"loading cache from disk took: {duration} seconds. exact_time: {datetime.now().strftime('%Y-%m-%d %H:%M:%S.%f')[:-3]}")
+        else:
+            logger.info(f"Skipped loading from disk")
+       
+
+    async def load_metadata_from_disk(self, index_id):
         # Load the dictionary from disk
-        loaded_dict = torch.load(filepath, mmap=True, map_location='cpu') #todo meow- go back to gpu, this is slow
+        filepath = f"{index_id}.metadata.pt"
+        return await async_torch_load(filepath, map_location='cpu')
         
-        # Create an instance of the class
-        instance = cls.__new__(cls)
-        
-        # Directly set the dict attribute
-        instance.persistedKVCache = loaded_dict
-        
-        duration = (datetime.now() - start_time).total_seconds()
-
-        #todo: add stats per MB \ per loaded block
-        meow_stats.add_operation_duration("load_cache_from_disk", duration) 
-
-        print(f"loading cache from disk took: {duration} seconds. exact_time: {datetime.now().strftime('%Y-%m-%d %H:%M:%S.%f')[:-3]}")
-
-        return instance
-    @classmethod
-    def load_metadata_from_disk(cls, filepath):
-        # Load the dictionary from disk
-        loaded_dict = torch.load(filepath, mmap=True, map_location='cpu')
-        
-        # Create an instance of the class
-        instance = cls.__new__(cls)
-        
-        # Directly set the dict attribute
-        instance.persistedMetadata = loaded_dict
-
-        return instance

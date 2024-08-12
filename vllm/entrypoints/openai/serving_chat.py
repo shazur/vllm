@@ -37,6 +37,7 @@ logger = init_logger(__name__)
 
 from vllm.engine.meow_persistence_handler import MeowPersistenceHandler
 
+meow_cache_handler = MeowPersistenceHandler()
 
 
 class OpenAIServingChat(OpenAIServing):
@@ -216,7 +217,7 @@ class OpenAIServingChat(OpenAIServing):
           # )
       elif request.index_id:  # 2. opt request 
           assert len(request.messages) == 1  # we only support 1 message for opt requests
-          cached_request_metadata = MeowPersistenceHandler.load_metadata_from_disk(f"{request.index_id}.metadata.pt").getPersistedMetadata()
+          cached_request_metadata = await meow_cache_handler.load_metadata_from_disk(request.index_id)
           computed_token_ids = cached_request_metadata['computed_token_ids']
           
           no_special_tokens_new_prompt_token_ids = tokenizer(

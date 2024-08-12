@@ -31,10 +31,11 @@ from vllm.sampling_params import SamplingParams
 from vllm.sequence import ExecuteModelRequest, SamplerOutput
 from vllm.usage.usage_lib import UsageContext
 
+from vllm.engine.meow_persistence_handler import MeowPersistenceHandler
 from vllm.meow_stats import MeowStats
 
 meow_stats = MeowStats()
-
+meow_cache_handler = MeowPersistenceHandler()
 
 logger = init_logger(__name__)
 ENGINE_ITERATION_TIMEOUT_S = envs.VLLM_ENGINE_ITERATION_TIMEOUT_S
@@ -249,14 +250,8 @@ class _AsyncLLMEngine(LLMEngine):
 
         seq_group_metadata_list, scheduler_outputs = self.scheduler[
             virtual_engine].schedule()
-        isPrompt = None
-        is_opt_from_index_request = False
-
-        if not scheduler_outputs.is_empty():
-            index_id=list(seq_group_metadata_list[0].seq_data.values())[0].get_meow_data().index_id
-            should_persist=list(seq_group_metadata_list[0].seq_data.values())[0].get_meow_data().should_index
-            if (index_id and not should_persist):
-              is_opt_from_index_request = True
+        
+        if not scheduler_outputs.is_empty():  
             # Execute the model.
             finished_requests_ids = self.scheduler[
                 virtual_engine].get_and_reset_finished_requests_ids()
@@ -270,7 +265,9 @@ class _AsyncLLMEngine(LLMEngine):
                 running_queue_size=scheduler_outputs.running_queue_size,
                 finished_requests_ids=finished_requests_ids
                 )
-            isPrompt=seq_group_metadata_list[0].is_prompt
+            #meow load memory 
+            await self.meow_load_caches(seq_group_metadata_list)
+            # end meow change
             output = await self.model_executor.execute_model_async(
                 execute_model_req)
         else:
@@ -285,24 +282,44 @@ class _AsyncLLMEngine(LLMEngine):
 
         # Tracing
         self.do_tracing(scheduler_outputs)
-
-
         end_time = datetime.now() 
+        self.meow_calc_stats(output, (end_time - start_time).total_seconds(), seq_group_metadata_list )
+          
+        return request_outputs
+    async def meow_load_caches(self,seq_group_metadata_list):
+        for seq_group_metadata in seq_group_metadata_list: #this can be done in parallel
+          seq_data = next(iter(seq_group_metadata.seq_data.values()))
+          
+          meow_data = seq_data.meow_data
+          if (not meow_data.should_copy_blocks):
+            continue
 
-        duration = (end_time - start_time).total_seconds() 
-        
-        if (len(output) > 0):  
-          #todo meow - check if number_of_input_tokens is correct in an indexed request as well compared to old machine.
-          number_of_input_tokens = len(list(seq_group_metadata_list[0].seq_data.values())[0].prompt_token_ids)
-          number_of_computed_tokens = list(seq_group_metadata_list[0].seq_data.values())[0]._num_computed_tokens
+          await meow_cache_handler.load_cache(meow_data.index_id)
+
+    def meow_calc_stats(self, output, duration, seq_group_metadata_list) -> None:
+        if (len(output) > 0): 
+          is_opt_from_index_request = False 
+          meow_data = list(seq_group_metadata_list[0].seq_data.values())[0].get_meow_data()
+          if (meow_data.index_id and not meow_data.should_index):
+            is_opt_from_index_request = True
+          
+          isPrompt=seq_group_metadata_list[0].is_prompt
+          number_of_computed_tokens = 0
+          
+          if (isPrompt):
+              number_of_input_tokens = len(list(seq_group_metadata_list[0].seq_data.values())[0].prompt_token_ids)
+              if (is_opt_from_index_request):
+                  number_of_computed_tokens = len(seq_group_metadata_list[0].computed_block_nums) * 16
+                  number_of_input_tokens = number_of_input_tokens-number_of_computed_tokens
+          else:
+              number_of_input_tokens = 1
+                    
           meow_stats.add_timing(
               duration=duration, 
               number_of_input_tokens=number_of_input_tokens, 
               is_opt_from_index_request=is_opt_from_index_request, 
               is_prompt_phase=isPrompt, 
               number_of_computed_tokens=number_of_computed_tokens)
-          
-        return request_outputs
 
     async def stop_remote_worker_execution_loop_async(self) -> None:
         """Stop the remote worker execution loop."""

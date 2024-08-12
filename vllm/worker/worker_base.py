@@ -24,6 +24,7 @@ from vllm.meow_stats import MeowStats
 
 meow_stats = MeowStats()
 
+meow_cache_handler = MeowPersistenceHandler()
 
 
 class WorkerBase(ABC):
@@ -298,43 +299,41 @@ class LocalOrDistributedWorkerBase(WorkerBase):
     def _meow_copy_blocks_to_cache_if_needed(self, execute_model_req: Optional[ExecuteModelRequest],  kv_caches: List[torch.Tensor]):
         if (not kv_caches):
             return
-        if (not execute_model_req or not execute_model_req.seq_group_metadata_list or len(execute_model_req.seq_group_metadata_list) != 1 ): #this probably never happens
-            return
         if(len(execute_model_req.seq_group_metadata_list[0].seq_data) != 1): #this probably never happens
             return
         
-        seq_data = next(iter(execute_model_req.seq_group_metadata_list[0].seq_data.values()))
+        for seq_group_metadata in execute_model_req.seq_group_metadata_list:
+          seq_data = next(iter(seq_group_metadata.seq_data.values()))
+          
+          meow_data = seq_data.meow_data
+
+          if (not meow_data.should_copy_blocks):
+            continue
+          
+          computed_block_nums = seq_group_metadata.computed_block_nums
+          seq_data.meow_data.should_copy_blocks = False
+
+          indexed_kv_caches = meow_cache_handler.getPersistedKvCaches(meow_data.index_id)["kv_cache"]
+
+          start_time = datetime.now() 
+
+          # Ensure computed_block_nums is a tensor and on the same device as kv_caches
+          computed_blocks_tensor = torch.tensor(computed_block_nums, device=kv_caches[0].device)
+
+          for layer_idx in range(len(kv_caches)):
+              kv_cache_layer = kv_caches[layer_idx]
+              device = kv_cache_layer.device  # Get device from kv_cache_layer
+              loaded_cache_layer = indexed_kv_caches[layer_idx].to(device)  # Move to appropriate device
+
+              # Use advanced indexing to copy the blocks
+              kv_cache_layer.index_copy_(1, computed_blocks_tensor, loaded_cache_layer[:, :len(computed_blocks_tensor), :, :, :])
+
+          duration = (datetime.now() - start_time).total_seconds()  # Calculate the duration
         
-        meow_data = seq_data.meow_data
-
-        if (not meow_data.should_copy_blocks):
-          return
+          #todo: add stats per MB \ per loaded block
+          meow_stats.add_operation_duration("meow_copy_blocks_to_cache_if_needed", duration) 
         
-        computed_block_nums = execute_model_req.seq_group_metadata_list[0].computed_block_nums
-        meow_data.should_copy_blocks = False
-
-        indexed_kv_caches = MeowPersistenceHandler.load_cache_from_disk(f"{meow_data.index_id}.data.pt").getPersistedKvCaches()["kv_cache"]
-
-        start_time = datetime.now() 
-
-        # Ensure computed_block_nums is a tensor and on the same device as kv_caches
-        computed_blocks_tensor = torch.tensor(computed_block_nums, device=kv_caches[0].device)
-
-        for layer_idx in range(len(kv_caches)):
-            kv_cache_layer = kv_caches[layer_idx]
-            device = kv_cache_layer.device  # Get device from kv_cache_layer
-            loaded_cache_layer = indexed_kv_caches[layer_idx].to(device, non_blocking=True)  # Move to appropriate device
-
-            # Use advanced indexing to copy the blocks
-            kv_cache_layer.index_copy_(1, computed_blocks_tensor, loaded_cache_layer[:, :len(computed_blocks_tensor), :, :, :])
-
-        duration = (datetime.now() - start_time).total_seconds()  # Calculate the duration
-        
-         #todo: add stats per MB \ per loaded block
-        meow_stats.add_operation_duration("meow_copy_blocks_to_cache_if_needed", duration) 
-        
-        print(f"meow_copy_blocks_to_cache_if_needed execution time: {duration} seconds. exact_time: {datetime.now().strftime('%Y-%m-%d %H:%M:%S.%f')[:-3]}")      
-        
+          print(f"meow_copy_blocks_to_cache_if_needed execution time: {duration} seconds. exact_time: {datetime.now().strftime('%Y-%m-%d %H:%M:%S.%f')[:-3]}")      
 
 
     def _execute_model_spmd(

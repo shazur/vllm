@@ -1,19 +1,21 @@
 import threading
 import time
 from vllm.logger import init_logger
+from vllm.utils import singleton
 
 logger = init_logger(__name__)
 
+@singleton
 class MeowStats:
-    _instance = None
+    # _instance = None
 
-    def __new__(cls):
-        if cls._instance is None:
-            cls._instance = super(MeowStats, cls).__new__(cls)
-            cls._instance._init_stats()
-        return cls._instance
+    # def __new__(cls):
+    #     if cls._instance is None:
+    #         cls._instance = super(MeowStats, cls).__new__(cls)
+    #         cls._instance._init_stats()
+    #     return cls._instance
 
-    def _init_stats(self):
+    def __init__(self):
         self.stats = {
             'index': {
                 'prompt_phase': {'total_time': 0, 'total_tokens': 0, 'total_computed_tokens': 0, 'total_requests': 0},
@@ -29,11 +31,13 @@ class MeowStats:
     def add_timing(self, duration: float, number_of_input_tokens: int, is_opt_from_index_request: bool, is_prompt_phase: bool, number_of_computed_tokens: int = 0):
         request_type = 'index' if is_opt_from_index_request else 'regular'
         phase = 'prompt_phase' if is_prompt_phase else 'inference_phase'
+        
         self.stats[request_type][phase]['total_time'] += duration
         self.stats[request_type][phase]['total_tokens'] += number_of_input_tokens
-        if is_opt_from_index_request and is_prompt_phase:
-            self.stats[request_type][phase]['total_computed_tokens'] += number_of_computed_tokens
-        if is_prompt_phase:
+            
+        if is_prompt_phase: # because this only happens once
+            if is_opt_from_index_request:
+              self.stats[request_type][phase]['total_computed_tokens'] += number_of_computed_tokens
             self.stats[request_type][phase]['total_requests'] += 1
 
     def add_operation_duration(self, operation_name: str, duration: float):
@@ -125,6 +129,6 @@ class MeowStats:
 
         if log_message:
             log_message += "------------------------------------------------------------------------\n"
-            logger.info(log_message.strip())
+            #logger.info(log_message.strip()) todo meow - uncomment 
 
 

@@ -53,6 +53,7 @@ from vllm.engine.meow_persistence_handler import MeowPersistenceHandler
 from vllm.meow_stats import MeowStats
 
 meow_stats = MeowStats()
+meow_cache_handler = MeowPersistenceHandler()
 
 logger = init_logger(__name__)
 _LOCAL_LOGGING_INTERVAL_SEC = 5
@@ -870,9 +871,7 @@ class LLMEngine:
         if meow_data.should_index and meow_data.index_id is not None:         
           #get relevant blocks to save
           blocks = list(seq_group_meta.block_tables.values())[0]  
-          
-          persistent_kv_caches = MeowPersistenceHandler(meow_data.index_id, output.kv_caches, blocks, seq_data.inputs['prompt_token_ids'],meow_data.eos_token)
-          persistent_kv_caches.writeToDisk(meow_data.index_id)
+          meow_cache_handler.persistCache(meow_data.index_id, output.kv_caches, blocks, seq_data.inputs['prompt_token_ids'], meow_data.eos_token)
           logger.info("meow request finished!!!")
 
     def step(self) -> List[Union[RequestOutput, EmbeddingRequestOutput]]:
