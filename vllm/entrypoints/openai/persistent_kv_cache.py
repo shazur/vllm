@@ -18,7 +18,7 @@ class IndexContextRequest(BaseModel):
     model: str = "mistralai/Mistral-7B-Instruct-v0.3"
 
 class OptimizedCompletionRequest(ChatCompletionRequest):
-    index_id: str
+    index_id: Optional[str] = None
 
 class PersistentKvCache():
     def __init__(

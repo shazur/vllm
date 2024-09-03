@@ -1,7 +1,7 @@
 import asyncio
 import time
 from functools import partial
-from typing import (Any, AsyncIterator, Callable, Dict, Iterable, List, Mapping,
+from typing import (Any, AsyncGenerator, AsyncIterator, Callable, Dict, Iterable, List, Mapping,
                     Optional, Set, Tuple, Type, Union)
 
 from typing_extensions import assert_never

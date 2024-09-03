@@ -1072,22 +1072,6 @@ class IntermediateTensors(
     def __repr__(self) -> str:
         return f"IntermediateTensors(tensors={self.tensors})"
 
-class MeowSamplerOutput(SamplerOutput):
-    kv_caches: Optional[List[torch.Tensor]] = None
-
-    def __init__(self, existing_sampler_output: SamplerOutput, 
-                 kv_caches: Optional[List[torch.Tensor]] = None):
-              
-        super().__init__(
-            outputs=existing_sampler_output.outputs,
-            sampled_token_probs=existing_sampler_output.sampled_token_probs,
-            logprobs=existing_sampler_output.logprobs,
-            sampled_token_ids=existing_sampler_output.sampled_token_ids,
-            spec_decode_worker_metrics=existing_sampler_output.spec_decode_worker_metrics
-        )
-        self.kv_caches = kv_caches
-    
-
 
 class PoolerOutput(
         msgspec.Struct,

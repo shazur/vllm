@@ -148,6 +148,30 @@ class SamplerOutput(
             f"spec_decode_worker_metrics={self.spec_decode_worker_metrics})")
 
 
+class MeowSamplerOutput(SamplerOutput, msgspec.Struct, kw_only=True):
+    kv_caches: Optional[List[torch.Tensor]] = None
+    existing_sampler_output: SamplerOutput
+
+    @classmethod
+    def create(cls, existing_sampler_output: SamplerOutput, kv_caches: Optional[List[torch.Tensor]] = None):
+        # Create a new instance with all fields from existing_sampler_output
+        new_instance = cls(
+            outputs=existing_sampler_output.outputs,
+            sampled_token_probs=existing_sampler_output.sampled_token_probs,
+            logprobs=existing_sampler_output.logprobs,
+            sampled_token_ids=existing_sampler_output.sampled_token_ids,
+            spec_decode_worker_metrics=existing_sampler_output.spec_decode_worker_metrics,
+            model_forward_time=existing_sampler_output.model_forward_time,
+            model_execute_time=existing_sampler_output.model_execute_time,
+            deferred_sample_results_args=existing_sampler_output.deferred_sample_results_args,
+            sampled_token_ids_cpu=existing_sampler_output.sampled_token_ids_cpu,
+            hidden_states=existing_sampler_output.hidden_states,
+            prefill_hidden_states=existing_sampler_output.prefill_hidden_states,
+            existing_sampler_output=existing_sampler_output,
+            kv_caches=kv_caches
+        )
+        return new_instance
+
 class Sampler(nn.Module):
     """Samples the next tokens from the model's outputs.
 

@@ -6,7 +6,9 @@ from typing import Sequence as GenericSequence
 from typing import Union
 
 from fastapi import Request
+from transformers import PreTrainedTokenizer
 
+from vllm.inputs.data import PromptInputs
 from vllm.config import ModelConfig
 from vllm.engine.protocol import AsyncEngineClient
 from vllm.entrypoints.chat_utils import (ConversationMessage,

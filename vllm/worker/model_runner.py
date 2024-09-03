@@ -14,6 +14,7 @@ import torch
 import torch.distributed
 import torch.nn as nn
 
+from vllm.model_executor.layers.sampler import MeowSamplerOutput
 import vllm.envs as envs
 from vllm.attention import AttentionMetadata, get_attn_backend
 from vllm.attention.backends.abstract import AttentionState
@@ -42,7 +43,7 @@ from vllm.prompt_adapter.request import PromptAdapterRequest
 from vllm.prompt_adapter.worker_manager import (
     LRUCacheWorkerPromptAdapterManager)
 from vllm.sampling_params import SamplingParams
-from vllm.sequence import IntermediateTensors, SequenceGroupMetadata, MeowSamplerOutput
+from vllm.sequence import IntermediateTensors, SequenceGroupMetadata
 from vllm.utils import (CudaMemoryProfiler, PyObjectCache, async_tensor_h2d,
                         flatten_2d_lists, is_hip, is_pin_memory_available,
                         supports_dynamo)
@@ -1492,10 +1493,11 @@ class ModelRunner(GPUModelRunnerBase[ModelInputForGPUWithSamplingMetadata]):
             logits=logits,
             sampling_metadata=model_input.sampling_metadata,
         )
-        output = MeowSamplerOutput(
-          existing_sampler_output=out,
-          kv_caches=kv_caches
-        )
+        output = MeowSamplerOutput.create(out, kv_caches=kv_caches)
+    #    output = MeowSamplerOutput(
+     #     existing_sampler_output=out,
+      #    kv_caches=kv_caches
+       # )
         if (self.observability_config is not None
                 and self.observability_config.collect_model_forward_time
                 and output is not None):

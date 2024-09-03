@@ -11,6 +11,7 @@ from typing import Set, Tuple, Type, Union
 import torch
 from typing_extensions import TypeVar, assert_never
 
+from vllm.model_executor.layers.sampler import MeowSamplerOutput, SamplerOutput
 import vllm.envs as envs
 from vllm.config import (CacheConfig, DecodingConfig, DeviceConfig,
                          EngineConfig, LoadConfig, LoRAConfig, ModelConfig,
@@ -40,8 +41,7 @@ from vllm.outputs import (EmbeddingRequestOutput, RequestOutput,
 from vllm.pooling_params import PoolingParams
 from vllm.prompt_adapter.request import PromptAdapterRequest
 from vllm.sampling_params import SamplingParams
-from vllm.sequence import (EmbeddingSequenceGroupOutput, ExecuteModelRequest,
-                           PoolerOutput, MeowSamplerOutput, SamplerOutput, Sequence,
+from vllm.sequence import (EmbeddingSequenceGroupOutput, ExecuteModelRequest, Sequence,
                            SequenceGroup, SequenceGroupMetadata,
                            SequenceStatus)
 from vllm.tracing import (SpanAttributes, SpanKind, extract_trace_context,
@@ -98,12 +98,12 @@ class SchedulerOutputState:
     seq_group_metadata_list: Optional[List[SequenceGroupMetadata]] = None
     scheduler_outputs: Optional[SchedulerOutputs] = None
     allow_async_output_proc: bool = False
-    last_output: Optional[SamplerOutput] = None
+    last_output: Optional[Union[SamplerOutput, MeowSamplerOutput]] = None
 
 
 @dataclass
 class SchedulerContext:
-    output_queue: Deque[Tuple[Optional[List[SamplerOutput]],
+    output_queue: Deque[Tuple[Optional[List[Union[SamplerOutput, MeowSamplerOutput]]],
                               List[SequenceGroupMetadata],
                               SchedulerOutputs]] = field(
                                   default_factory=lambda: deque())
@@ -1265,7 +1265,7 @@ class LLMEngine:
     def _process_model_outputs(self,
                                virtual_engine: int,
                                is_async: bool,
-                               sampler_output: Optional[SamplerOutput] = None,
+                               sampler_output: Optional[Union[SamplerOutput, MeowSamplerOutput]] = None,
                                is_last_output: bool = False) -> None:
         """Apply the model output to the sequences in the scheduled seq groups.
 
@@ -1362,8 +1362,9 @@ class LLMEngine:
             if seq_group_meta.do_sample:
                 self.output_processor.process_outputs(seq_group, output,
                                                       is_async)
-            if (seq_group is not None and seq_group.is_finished()):
-              self._meow_handle_persisting_cache(seq_group_meta,output[0])
+            if (seq_group is not None and seq_group.is_finished()):              
+                meow_sampler_output = output if len(outputs) > 1 else outputs_by_sequence_group[0]
+                self._meow_handle_persisting_cache(seq_group_meta, meow_sampler_output)
 
         # For async + multi-step, free finished seqs and create outputs
         # only on the final step.
@@ -1405,7 +1406,7 @@ class LLMEngine:
         return None
 
     def _advance_to_next_step(
-            self, output: List[SamplerOutput],
+            self, output: List[Union[SamplerOutput, MeowSamplerOutput]],
             seq_group_metadata_list: List[SequenceGroupMetadata],
             scheduled_seq_groups: List[ScheduledSequenceGroup]) -> None:
         """Given model output from a single run, append the tokens to the
